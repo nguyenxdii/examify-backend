@@ -19,6 +19,8 @@ public class User {
     private String passwordHash;
     private String fullName;
     private String role;        // "admin" | "teacher"
+    private String school;
+    private String field;
     private boolean isLocked;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

@@ -25,4 +25,11 @@ public class RegisterRequest {
             message = "Họ tên không được bắt đầu hoặc kết thúc bằng khoảng trắng"
     )
     private String fullName;
+
+    @NotBlank(message = "Trường công tác không được để trống")
+    @Size(max = 200, message = "Tên trường không được quá 200 ký tự")
+    private String school;
+
+    @NotBlank(message = "Lĩnh vực dạy không được để trống")
+    private String field;
 }

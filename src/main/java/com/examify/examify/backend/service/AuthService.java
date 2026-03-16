@@ -31,6 +31,8 @@ public class AuthService {
         user.setEmail(request.getEmail());
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
         user.setFullName(request.getFullName());
+        user.setSchool(request.getSchool());
+        user.setField(request.getField());
         user.setRole("teacher");   // mặc định đăng ký là teacher
         user.setLocked(false);
         user.setCreatedAt(LocalDateTime.now());
