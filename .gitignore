@@ -1,0 +1,52 @@
+### BE ###
+src/main/resources/application.properties
+HELP.md
+target/
+.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### VS Code ###
+.vscode/
+
+### Secrets & API Keys ###
+.env
+.env.local
+.env.*.local
+*.secret
+*.key
+*.pem
+credentials.json
+application-*.properties
+application-*.yml
+!application-default.properties
+!application-default.yml
+
+### OS and Misc ###
+.DS_Store
+Thumbs.db
