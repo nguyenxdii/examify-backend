@@ -156,6 +156,8 @@ public class GeminiService {
                   {"key": "D", "content": "Đáp án D"}
                 ],
                 "correctAnswers": ["A"],
+                "sampleAnswer": "Câu trả lời mẫu (nếu là tự luận)",
+                "scoringCriteria": "Tiêu chí chấm điểm (nếu là tự luận)",
                 "explanation": "Giải thích đáp án",
                 "difficulty": "medium",
                 "topic": "chủ đề con",
@@ -166,7 +168,7 @@ public class GeminiService {
             Lưu ý:
             - multiple_choice: correctAnswers chỉ có 1 phần tử
             - multiple_answer: correctAnswers có 2+ phần tử
-            - essay: choices = [], correctAnswers = [], thêm field sampleAnswer
+            - essay: choices = [], correctAnswers = [], bắt buộc có sampleAnswer và scoringCriteria
             - Câu hỏi phải rõ ràng, chính xác, không trùng lặp
             """.formatted(
                 request.getContent(),
@@ -218,6 +220,8 @@ public class GeminiService {
                 QuestionRequest q = new QuestionRequest();
                 q.setContent(node.path("content").asText());
                 q.setType(node.path("type").asText("multiple_choice"));
+                q.setSampleAnswer(node.path("sampleAnswer").asText());
+                q.setScoringCriteria(node.path("scoringCriteria").asText());
                 q.setExplanation(node.path("explanation").asText());
                 q.setDifficulty(node.path("difficulty").asText("medium"));
                 q.setTopic(node.path("topic").asText());

@@ -7,14 +7,14 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 @Data
-@Document(collection = "questions")
-public class Question {
+@Document(collection = "question_bank")
+public class QuestionBank {
     @Id
     private String id;
-    private String examId;
+    private String teacherId;
     private String content;
     private String type; // "multiple_choice" | "multiple_answer" | "essay"
-    private List<Choice> choices;
+    private List<Question.Choice> choices;
     private List<String> correctAnswers;
     private String sampleAnswer;
     private String scoringCriteria;
@@ -23,13 +23,6 @@ public class Question {
     private String subject;
     private String topic;
     private List<String> tags;
-    private int orderIndex;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
-
-    @Data
-    public static class Choice {
-        private String key;     // "A", "B", "C", "D"
-        private String content;
-    }
 }

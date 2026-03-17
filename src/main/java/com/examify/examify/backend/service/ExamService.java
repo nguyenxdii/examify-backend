@@ -15,11 +15,15 @@ public class ExamService {
 
     private final ExamRepository examRepository;
     private final QuestionRepository questionRepository;
+    private final ExamRoomRepository examRoomRepository;
+    private final SubmissionRepository submissionRepository;
 
     private String getCurrentTeacherId() {
-        User user = (User) SecurityContextHolder.getContext()
-                .getAuthentication().getPrincipal();
-        return user.getId();
+        Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        if (principal instanceof User) {
+            return ((User) principal).getId();
+        }
+        throw new RuntimeException("Principal is not of type User: " + (principal != null ? principal.getClass().getName() : "null"));
     }
 
     private Exam getExamAndCheckOwner(String examId) {
@@ -67,7 +71,25 @@ public class ExamService {
     }
 
     public void deleteExam(String examId) {
-        getExamAndCheckOwner(examId);
+        Exam exam = getExamAndCheckOwner(examId);
+        String status = exam.getStatus();
+
+        if ("ready".equals(status)) {
+            boolean hasOpenRoom = examRoomRepository.existsByExamIdAndStatus(examId, "open");
+            if (hasOpenRoom) {
+                throw new RuntimeException("Không thể xóa đề thi khi có phòng thi đang mở");
+            }
+        } else if ("shared".equals(status)) {
+            // Kiểm tra submissions thông qua các phòng thi của đề thi này
+            List<ExamRoom> rooms = examRoomRepository.findByExamId(examId);
+            for (ExamRoom room : rooms) {
+                if (submissionRepository.existsByRoomId(room.getId())) {
+                    throw new RuntimeException("Không thể xóa đề thi đã có học sinh nộp bài");
+                }
+            }
+        }
+
+        // Nếu là draft hoặc các điều kiện trên thỏa mãn (cho phép xóa)
         questionRepository.deleteByExamId(examId);
         examRepository.deleteById(examId);
     }
@@ -75,7 +97,10 @@ public class ExamService {
     // ===== QUESTION CRUD =====
 
     public Question addQuestion(String examId, QuestionRequest req) {
-        getExamAndCheckOwner(examId);
+        Exam exam = getExamAndCheckOwner(examId);
+        if (!"draft".equals(exam.getStatus())) {
+            throw new RuntimeException("Không thể chỉnh sửa đề thi đã phát hành");
+        }
         Question q = buildQuestion(examId, req);
         updateExamStatus(examId);
         return questionRepository.save(q);
@@ -87,13 +112,19 @@ public class ExamService {
     }
 
     public Question updateQuestion(String examId, String questionId, QuestionRequest req) {
-        getExamAndCheckOwner(examId);
+        Exam exam = getExamAndCheckOwner(examId);
+        if (!"draft".equals(exam.getStatus())) {
+            throw new RuntimeException("Không thể chỉnh sửa đề thi đã phát hành");
+        }
         Question existing = questionRepository.findById(questionId)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy câu hỏi"));
+        
         existing.setContent(req.getContent());
         existing.setType(req.getType());
         existing.setChoices(req.getChoices());
         existing.setCorrectAnswers(req.getCorrectAnswers());
+        existing.setSampleAnswer(req.getSampleAnswer());
+        existing.setScoringCriteria(req.getScoringCriteria());
         existing.setExplanation(req.getExplanation());
         existing.setDifficulty(req.getDifficulty());
         existing.setTopic(req.getTopic());
@@ -104,7 +135,10 @@ public class ExamService {
     }
 
     public void deleteQuestion(String examId, String questionId) {
-        getExamAndCheckOwner(examId);
+        Exam exam = getExamAndCheckOwner(examId);
+        if (!"draft".equals(exam.getStatus())) {
+            throw new RuntimeException("Không thể chỉnh sửa đề thi đã phát hành");
+        }
         questionRepository.deleteById(questionId);
         updateExamStatus(examId);
     }
@@ -129,6 +163,8 @@ public class ExamService {
         q.setType(req.getType());
         q.setChoices(req.getChoices());
         q.setCorrectAnswers(req.getCorrectAnswers());
+        q.setSampleAnswer(req.getSampleAnswer());
+        q.setScoringCriteria(req.getScoringCriteria());
         q.setExplanation(req.getExplanation());
         q.setDifficulty(req.getDifficulty());
         q.setTopic(req.getTopic());
@@ -142,7 +178,12 @@ public class ExamService {
     private void updateExamStatus(String examId) {
         Exam exam = examRepository.findById(examId).orElseThrow();
         long count = questionRepository.countByExamId(examId);
-        exam.setStatus(count > 0 ? "ready" : "draft");
+        // Chỉ tự động cập nhật sang ready nếu đang là draft
+        if ("draft".equals(exam.getStatus()) && count > 0) {
+            exam.setStatus("ready");
+        } else if ("ready".equals(exam.getStatus()) && count == 0) {
+            exam.setStatus("draft");
+        }
         exam.setUpdatedAt(LocalDateTime.now());
         examRepository.save(exam);
     }
