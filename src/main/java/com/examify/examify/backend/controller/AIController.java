@@ -24,4 +24,9 @@ public class AIController {
     public ResponseEntity<List<QuestionRequest>> generate(@RequestBody GenerateRequest request) {
         return ResponseEntity.ok(geminiService.generate(request));
     }
+
+    @PostMapping("/greeting")
+    public ResponseEntity<AiGreetingResponse> getGreeting(@RequestBody AiGreetingRequest request) {
+        return ResponseEntity.ok(geminiService.getGreeting(request));
+    }
 }

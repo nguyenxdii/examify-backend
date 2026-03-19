@@ -6,4 +6,5 @@ import java.util.List;
 
 public interface SubmissionAnswerRepository extends MongoRepository<SubmissionAnswer, String> {
     List<SubmissionAnswer> findBySubmissionId(String submissionId);
+    void deleteBySubmissionId(String submissionId);
 }

@@ -11,7 +11,7 @@ import java.util.List;
 public class Submission {
     @Id
     private String id;
-    private String roomId;
+    private String roomId; // ref: exam_rooms
     private String studentName;
     private String studentId;
     private float score;

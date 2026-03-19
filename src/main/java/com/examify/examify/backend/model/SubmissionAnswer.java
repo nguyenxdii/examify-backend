@@ -10,8 +10,8 @@ import java.util.List;
 public class SubmissionAnswer {
     @Id
     private String id;
-    private String submissionId;
-    private String questionId;
+    private String submissionId; // ref: submissions
+    private String questionId;   // ref: questions
     private List<String> selectedAnswer;
     private boolean isCorrect;
     private String essayAnswer;

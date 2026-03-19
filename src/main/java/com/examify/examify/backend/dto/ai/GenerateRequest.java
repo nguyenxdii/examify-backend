@@ -14,4 +14,5 @@ public class GenerateRequest {
     private int easyPercent;      // nếu difficulty = "mixed"
     private int mediumPercent;
     private int hardPercent;
+    private boolean detailedExplanation;
 }

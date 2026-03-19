@@ -18,6 +18,7 @@ public class User {
 
     private String passwordHash;
     private String fullName;
+    private String gender;      // "male" | "female"
     private String role;        // "admin" | "teacher"
     private String school;
     private String field;

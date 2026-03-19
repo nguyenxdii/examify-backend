@@ -2,6 +2,7 @@ package com.examify.examify.backend.service;
 
 import com.examify.examify.backend.dto.AuthResponse;
 import com.examify.examify.backend.dto.LoginRequest;
+import com.examify.examify.backend.dto.ProfileUpdateRequest;
 import com.examify.examify.backend.dto.RegisterRequest;
 import com.examify.examify.backend.model.User;
 import com.examify.examify.backend.repository.UserRepository;
@@ -31,6 +32,7 @@ public class AuthService {
         user.setEmail(request.getEmail());
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
         user.setFullName(request.getFullName());
+        user.setGender(request.getGender());
         user.setSchool(request.getSchool());
         user.setField(request.getField());
         user.setRole("teacher");   // mặc định đăng ký là teacher
@@ -42,7 +44,7 @@ public class AuthService {
 
         // Tạo token và trả về
         String token = jwtService.generateToken(user.getEmail());
-        return new AuthResponse(token, user.getId(), user.getEmail(), user.getFullName(), user.getRole());
+        return new AuthResponse(token, user.getId(), user.getEmail(), user.getFullName(), user.getRole(), user.getGender(), user.getSchool(), user.getField());
     }
 
     public AuthResponse login(LoginRequest request) {
@@ -62,6 +64,29 @@ public class AuthService {
 
         // Tạo token và trả về
         String token = jwtService.generateToken(user.getEmail());
-        return new AuthResponse(token, user.getId(), user.getEmail(), user.getFullName(), user.getRole());
+        return new AuthResponse(token, user.getId(), user.getEmail(), user.getFullName(), user.getRole(), user.getGender(), user.getSchool(), user.getField());
+    }
+
+    public AuthResponse updateProfile(String email, ProfileUpdateRequest request) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy người dùng"));
+        
+        if (request.getFullName() != null) user.setFullName(request.getFullName());
+        if (request.getGender() != null) user.setGender(request.getGender());
+        if (request.getSchool() != null) user.setSchool(request.getSchool());
+        if (request.getField() != null) user.setField(request.getField());
+        user.setUpdatedAt(LocalDateTime.now());
+        userRepository.save(user);
+        
+        String token = jwtService.generateToken(user.getEmail());
+        return new AuthResponse(token, user.getId(), user.getEmail(), user.getFullName(), user.getRole(), user.getGender(), user.getSchool(), user.getField());
+    }
+
+    public AuthResponse getProfile(String email) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy người dùng"));
+        
+        String token = jwtService.generateToken(user.getEmail());
+        return new AuthResponse(token, user.getId(), user.getEmail(), user.getFullName(), user.getRole(), user.getGender(), user.getSchool(), user.getField());
     }
 }

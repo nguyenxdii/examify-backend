@@ -90,43 +90,52 @@ public class GeminiService {
 
     // ===== PROMPT PHÂN TÍCH =====
     private String buildAnalyzePrompt(AnalyzeRequest request) {
-        if ("topic".equals(request.getInputType())) {
-            return """
-                Bạn là chuyên gia giáo dục. Phân tích chủ đề sau và gợi ý số câu hỏi phù hợp.
-                Chủ đề: %s
-                
-                Trả về JSON (không có markdown, không có ```):
-                {
-                  "suggestedTotal": 20,
-                  "suggestedMultipleChoice": 12,
-                  "suggestedMultipleAnswer": 5,
-                  "suggestedEssay": 3,
-                  "detectedTopics": ["topic1", "topic2"],
-                  "summary": "Mô tả ngắn về chủ đề"
-                }
-                """.formatted(request.getContent());
-        }
+        String typeDesc = "topic".equals(request.getInputType()) ? "chủ đề" : "tài liệu văn bản";
+        String langName = "en".equals(request.getLanguage()) ? "English" : "Vietnamese";
 
         return """
-            Bạn là chuyên gia giáo dục. Phân tích tài liệu sau và gợi ý số câu hỏi phù hợp.
-            Tài liệu dài %d từ.
+            Bạn là chuyên gia giáo dục Việt Nam. Nhiệm vụ của bạn là phân tích %s sau đây bằng ngôn ngữ %s.
             
             Nội dung:
             %s
             
-            Trả về JSON (không có markdown, không có ```):
+            ===== BƯỚC 1: KIỂM TRA TÍNH PHÙ HỢP VÀ ĐẦY ĐỦ (QUAN TRỌNG NHẤT) =====
+            Bạn PHẢI trả lời isSufficient = false nếu:
+            - Nội dung KHÔNG mang tính giáo dục: Lời chào ("Chào", "Hi"), giới thiệu ("Tôi tên là...", "Duy đây"), tán gẫu, linh tinh, đùa cợt.
+            - Nội dung QUÁ NGẮN hoặc CHIẾM DỤNG: Chỉ có môn học ("Toán học"), hoặc vài từ vô nghĩa ("abc", "vcl", "123").
+            - Nội dung KHÔNG ĐỦ DỮ LIỆU: Không thể tạo ít nhất 5 câu hỏi từ thông tin này mà không tự bịa thêm kiến thức.
+            
+            Bạn CHỈ trả lời isSufficient = true nếu:
+            - Đây là một bài học, chủ đề học thuật rõ ràng có kiến thức cụ thể.
+            
+            QUY TẮC CƠ BẢN:
+            - TUYỆT ĐỐI không bao giờ tự bịa ra kiến thức nếu input không có.
+            - Nếu không chắc chắn, hãy chọn isSufficient = false.
+            - Nếu isSufficient = false, hãy viết message giải thích: "Nội dung mang tính chất chào hỏi/linh tinh, vui lòng cung cấp tài liệu hoặc chủ đề học tập cụ thể."
+            
+            ===== BƯỚC 2: GỢI Ý SỐ CÂU HỎI =====
+            Nếu isSufficient = true, gợi ý số câu phù hợp với độ dài/phức tạp của nội dung.
+            Đảm bảo: suggestedMultipleChoice + suggestedMultipleAnswer + suggestedEssay = suggestedTotal
+            
+            ===== QUY TẮC NGÔN NGỮ =====
+            Toàn bộ các field: message, suggestedTitle, suggestedDescription, detectedTopics, summary
+            đều phải viết bằng ngôn ngữ: %s
+            
+            ===== ĐỊNH DẠNG OUTPUT =====
+            Trả về JSON hợp lệ (tuyệt đối không có markdown, không có ```json, không có ``` ):
             {
-              "suggestedTotal": số_câu_phù_hợp,
-              "suggestedMultipleChoice": số_câu_tn_1_đáp_án,
-              "suggestedMultipleAnswer": số_câu_tn_nhiều_đáp_án,
-              "suggestedEssay": số_câu_tự_luận,
-              "detectedTopics": ["chủ_đề_1", "chủ_đề_2"],
-              "summary": "tóm_tắt_ngắn_tài_liệu"
+              "isSufficient": true,
+              "message": "Nội dung đã đủ để tạo câu hỏi. (Nếu false: hướng dẫn cụ thể người dùng cần bổ sung gì)",
+              "suggestedTitle": "Tên đề thi ngắn gọn, súc tích",
+              "suggestedDescription": "Mô tả 1-2 câu về nội dung đề thi",
+              "suggestedTotal": 20,
+              "suggestedMultipleChoice": 12,
+              "suggestedMultipleAnswer": 5,
+              "suggestedEssay": 3,
+              "detectedTopics": ["Chủ đề 1", "Chủ đề 2", "Chủ đề 3"],
+              "summary": "Tóm tắt ngắn gọn nội dung trong 2-3 câu"
             }
-            """.formatted(
-                request.getContent().split("\\s+").length,
-                request.getContent()
-            );
+            """.formatted(typeDesc, langName, request.getContent(), langName);
     }
 
     // ===== PROMPT SINH CÂU HỎI =====
@@ -170,12 +179,14 @@ public class GeminiService {
             - multiple_answer: correctAnswers có 2+ phần tử
             - essay: choices = [], correctAnswers = [], bắt buộc có sampleAnswer và scoringCriteria
             - Câu hỏi phải rõ ràng, chính xác, không trùng lặp
+            - %s
             """.formatted(
                 request.getContent(),
                 request.getMultipleChoice(),
                 request.getMultipleAnswer(),
                 request.getEssay(),
-                difficultyNote
+                difficultyNote,
+                request.isDetailedExplanation() ? "Yêu cầu giải thích (explanation) cực kỳ chi tiết, trình bày từng bước giải quyết vấn đề (step-by-step)." : "Giải thích ngắn gọn, súc tích."
             );
     }
 
@@ -196,7 +207,8 @@ public class GeminiService {
             JsonNode node = objectMapper.readTree(cleaned);
             List<String> topics = new ArrayList<>();
             node.path("detectedTopics").forEach(t -> topics.add(t.asText()));
-            return new AnalyzeResponse(
+            
+            AnalyzeResponse response = new AnalyzeResponse(
                 node.path("suggestedTotal").asInt(10),
                 node.path("suggestedMultipleChoice").asInt(6),
                 node.path("suggestedMultipleAnswer").asInt(3),
@@ -204,9 +216,18 @@ public class GeminiService {
                 topics,
                 node.path("summary").asText("")
             );
+            
+            response.setSufficient(node.path("isSufficient").asBoolean(false));
+            response.setMessage(node.path("message").asText(""));
+            response.setSuggestedTitle(node.path("suggestedTitle").asText(""));
+            response.setSuggestedDescription(node.path("suggestedDescription").asText(""));
+            
+            return response;
         } catch (Exception e) {
             // Fallback nếu parse lỗi
-            return new AnalyzeResponse(10, 6, 3, 1, List.of(), "Không thể phân tích");
+            AnalyzeResponse fallback = new AnalyzeResponse(0, 0, 0, 0, List.of(), "Lỗi phân tích nội dung.");
+            fallback.setSufficient(false);
+            return fallback;
         }
     }
 
@@ -259,5 +280,64 @@ public class GeminiService {
         return raw.replaceAll("```json", "")
                   .replaceAll("```", "")
                   .trim();
+    }
+
+    // ===== SINH LỜI CHÀO DASHBOARD =====
+    public AiGreetingResponse getGreeting(AiGreetingRequest request) {
+        String prompt = buildGreetingPrompt(request);
+        String raw = callGemini(prompt);
+        return parseGreetingResponse(raw);
+    }
+
+    private String buildGreetingPrompt(AiGreetingRequest request) {
+        String lang = (request.getLanguage() != null && request.getLanguage().startsWith("en")) ? "English" : "Vietnamese";
+        
+        return """
+            Bạn là SynDe — người bạn nhỏ thân thiết của giáo viên, không phải trợ lý công việc.
+            Tên: %s | Ngôn ngữ: %s | Thời gian: %s | Đang ở trang: %s
+            
+            Nhiệm vụ: Tạo 1 lời chào ngắn, ấm áp, tự nhiên như tin nhắn từ người bạn thực sự quan tâm.
+            
+            Tone theo thời gian:
+            - 5h-9h: Tươi tắn, tiếp thêm năng lượng buổi sáng
+            - 9h-12h: Nhẹ nhàng, đồng hành
+            - 12h-14h: Nhắc nghỉ ngơi, ăn trưa
+            - 14h-18h: Động lực nhẹ cho buổi chiều
+            - 18h-22h: Ấm áp buổi tối, hỏi thăm
+            - 22h+: Lo lắng nhẹ vì làm việc khuya, nhắc giữ sức khỏe
+            
+            Quy tắc bắt buộc (MANDATORY):
+            - Xưng "Em", gọi "Thầy/Cô" kèm theo tên giáo viên.
+            - Title: 4-6 từ, có cảm xúc thật.
+            - Subtitle: 10-18 từ, cụ thể theo thời điểm, không sáo rỗng.
+            - 1-2 emoji phù hợp cảm xúc, không spam.
+            - Tuyệt đối không dùng: "Em luôn ở đây", "Hãy để em giúp", "Chúc một ngày tốt lành".
+            - Đôi khi có thể đề cập nhẹ đến trang đang xem nhưng không gượng gạo.
+            
+            Trả về JSON duy nhất:
+            {
+              "title": "Tiêu đề (Vd: Thầy Dii mặc ấm nha! ❄️)",
+              "subtitle": "Lời chào (Vd: Sáng nay trời hơi lạnh, Thầy nhớ quàng khăn trước khi lên lớp nhé. Em đợi Thầy ở đây ạ.)"
+            }
+            """.formatted(
+                request.getPathname(),
+                request.getFullName(),
+                lang,
+                new Date().toString(),
+                request.getFullName()
+            );
+    }
+
+    private AiGreetingResponse parseGreetingResponse(String raw) {
+        try {
+            String cleaned = cleanJson(raw);
+            JsonNode node = objectMapper.readTree(cleaned);
+            return new AiGreetingResponse(
+                node.path("title").asText("Chào mừng trở lại!"),
+                node.path("subtitle").asText("Hôm nay Thầy/Cô thế nào ạ?")
+            );
+        } catch (Exception e) {
+            return new AiGreetingResponse("Chào mừng trở lại!", "Hệ thống đã sẵn sàng hỗ trợ Thầy/Cô.");
+        }
     }
 }

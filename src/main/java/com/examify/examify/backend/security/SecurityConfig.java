@@ -29,6 +29,7 @@ public class SecurityConfig {
             .cors(Customizer.withDefaults()) // Sử dụng bean corsConfigurationSource()
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/auth/**").permitAll()  // Auth endpoints mở public
+                .requestMatchers("/api/exam/**").permitAll()  // Student exam endpoints mở public
                 .anyRequest().authenticated()                  // Còn lại cần token
             )
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);

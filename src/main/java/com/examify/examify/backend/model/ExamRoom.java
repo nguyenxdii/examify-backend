@@ -18,6 +18,7 @@ public class ExamRoom {
     private String roomCode;
     
     private String name;
+    private String mode; // "exam" | "practice"
     private int durationMinutes;
     private LocalDateTime openAt;
     private LocalDateTime closeAt;

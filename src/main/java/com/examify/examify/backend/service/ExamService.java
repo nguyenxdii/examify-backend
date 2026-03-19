@@ -17,6 +17,8 @@ public class ExamService {
     private final QuestionRepository questionRepository;
     private final ExamRoomRepository examRoomRepository;
     private final SubmissionRepository submissionRepository;
+    private final SubmissionAnswerRepository submissionAnswerRepository;
+    private final StudentListRepository studentListRepository;
 
     private String getCurrentTeacherId() {
         Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
@@ -72,24 +74,23 @@ public class ExamService {
 
     public void deleteExam(String examId) {
         Exam exam = getExamAndCheckOwner(examId);
-        String status = exam.getStatus();
-
-        if ("ready".equals(status)) {
-            boolean hasOpenRoom = examRoomRepository.existsByExamIdAndStatus(examId, "open");
-            if (hasOpenRoom) {
+        // Kiểm tra xem đề thi có đang được sử dụng trong phòng thi nào không
+        List<ExamRoom> rooms = examRoomRepository.findByExamId(examId);
+        for (ExamRoom room : rooms) {
+            if ("open".equals(room.getStatus())) {
                 throw new RuntimeException("Không thể xóa đề thi khi có phòng thi đang mở");
             }
-        } else if ("shared".equals(status)) {
-            // Kiểm tra submissions thông qua các phòng thi của đề thi này
-            List<ExamRoom> rooms = examRoomRepository.findByExamId(examId);
-            for (ExamRoom room : rooms) {
-                if (submissionRepository.existsByRoomId(room.getId())) {
-                    throw new RuntimeException("Không thể xóa đề thi đã có học sinh nộp bài");
-                }
+            if (submissionRepository.existsByRoomId(room.getId())) {
+                throw new RuntimeException("Không thể xóa đề thi đã có học sinh làm bài");
             }
         }
 
-        // Nếu là draft hoặc các điều kiện trên thỏa mãn (cho phép xóa)
+        // Nếu cho phép xóa: Xóa dữ liệu liên quan
+        for (ExamRoom room : rooms) {
+            studentListRepository.deleteByRoomId(room.getId());
+            examRoomRepository.deleteById(room.getId());
+        }
+        
         questionRepository.deleteByExamId(examId);
         examRepository.deleteById(examId);
     }
