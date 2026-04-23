@@ -10,4 +10,5 @@ public class ExamRequest {
     private String description;
     @NotBlank(message = "Môn học không được để trống")
     private String subject;
+    private String status = "draft";
 }

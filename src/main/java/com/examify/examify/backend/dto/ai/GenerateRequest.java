@@ -11,8 +11,9 @@ public class GenerateRequest {
     private int multipleAnswer;   // số câu trắc nghiệm nhiều đáp án
     private int essay;            // số câu tự luận
     private String difficulty;    // "easy" | "medium" | "hard" | "mixed"
-    private int easyPercent;      // nếu difficulty = "mixed"
-    private int mediumPercent;
-    private int hardPercent;
+    private int easyCount;
+    private int mediumCount;
+    private int hardCount;
+    private String language;      // "vi" | "en"
     private boolean detailedExplanation;
 }

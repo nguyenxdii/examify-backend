@@ -67,6 +67,9 @@ public class ExamService {
         exam.setTitle(request.getTitle());
         exam.setDescription(request.getDescription());
         exam.setSubject(request.getSubject());
+        if (request.getStatus() != null) {
+            exam.setStatus(request.getStatus());
+        }
         exam.setUpdatedAt(LocalDateTime.now());
         examRepository.save(exam);
         return toResponse(exam);

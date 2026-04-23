@@ -9,10 +9,14 @@ public class AnalyzeResponse {
     private int suggestedMultipleChoice;
     private int suggestedMultipleAnswer;
     private int suggestedEssay;
+    private int suggestedEasy;
+    private int suggestedMedium;
+    private int suggestedHard;
     private List<String> detectedTopics;
     private String summary;
     
     // Valiđation fields
+    @com.fasterxml.jackson.annotation.JsonProperty("isSufficient")
     private boolean isSufficient;
     private String message;
     
