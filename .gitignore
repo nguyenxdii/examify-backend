@@ -1,5 +1,4 @@
 ### BE ###
-src/main/resources/application.properties
 HELP.md
 target/
 .mvn/wrapper/maven-wrapper.jar
@@ -42,6 +41,7 @@ build/
 *.key
 *.pem
 credentials.json
+src/main/resources/application-local.properties
 application-*.properties
 application-*.yml
 !application-default.properties
