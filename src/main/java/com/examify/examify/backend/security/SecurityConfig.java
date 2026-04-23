@@ -23,16 +23,16 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
-            .csrf(AbstractHttpConfigurer::disable)   // REST API không cần CSRF
-            .sessionManagement(s -> s
-                .sessionCreationPolicy(SessionCreationPolicy.STATELESS))  // Không dùng session
-            .cors(Customizer.withDefaults()) // Sử dụng bean corsConfigurationSource()
-            .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/auth/**").permitAll()  // Auth endpoints mở public
-                .requestMatchers("/api/exam/**").permitAll()  // Student exam endpoints mở public
-                .anyRequest().authenticated()                  // Còn lại cần token
-            )
-            .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+                .csrf(AbstractHttpConfigurer::disable) // REST API không cần CSRF
+                .sessionManagement(s -> s
+                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS)) // Không dùng session
+                .cors(Customizer.withDefaults()) // Sử dụng bean corsConfigurationSource()
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers("/api/auth/**").permitAll() // Auth endpoints mở public
+                        .requestMatchers("/api/exam/**").permitAll() // Student exam endpoints mở public
+                        .anyRequest().authenticated() // Còn lại cần token
+                )
+                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
