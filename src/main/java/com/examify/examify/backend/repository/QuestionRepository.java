@@ -6,6 +6,7 @@ import java.util.List;
 
 public interface QuestionRepository extends MongoRepository<Question, String> {
     List<Question> findByExamIdOrderByOrderIndex(String examId);
+    List<Question> findByTeacherId(String teacherId);
     void deleteByExamId(String examId);
     long countByExamId(String examId);
 }

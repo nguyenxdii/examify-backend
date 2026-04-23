@@ -11,7 +11,8 @@ import java.util.List;
 public class Submission {
     @Id
     private String id;
-    private String roomId; // ref: exam_rooms
+    private String roomId; // optional, ref: exam_rooms
+    private String examId; // ref: exams (for public shared quizzes)
     private String studentName;
     private String studentId;
     private float score;

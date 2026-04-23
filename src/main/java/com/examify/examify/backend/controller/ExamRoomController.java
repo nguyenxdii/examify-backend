@@ -8,6 +8,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/rooms")
@@ -75,6 +76,11 @@ public class ExamRoomController {
         return ResponseEntity.noContent().build();
     }
 
+    @PutMapping("/{roomId}/students/{id}")
+    public ResponseEntity<StudentListResponse> updateStudent(@PathVariable String roomId, @PathVariable String id, @RequestBody StudentListRequest.StudentEntry student) {
+        return ResponseEntity.ok(examRoomService.updateStudentManual(roomId, id, student));
+    }
+
     @GetMapping("/{roomId}/submissions")
     public ResponseEntity<List<SubmissionSummaryResponse>> getRoomSubmissions(@PathVariable String roomId) {
         return ResponseEntity.ok(examRoomService.getRoomSubmissions(roomId));
@@ -92,5 +98,20 @@ public class ExamRoomController {
             @RequestBody GradeEssayRequest request
     ) {
         return ResponseEntity.ok(examRoomService.gradeEssay(roomId, submissionId, request));
+    }
+
+    // ===== PUBLIC ENDPOINTS FOR STUDENTS =====
+
+    @GetMapping("/{roomId}/public")
+    public ResponseEntity<Map<String, Object>> getRoomPublic(@PathVariable String roomId) {
+        return ResponseEntity.ok(examRoomService.getRoomPublic(roomId));
+    }
+
+    @PostMapping("/{roomId}/submit")
+    public ResponseEntity<com.examify.examify.backend.model.Submission> submitRoom(
+            @PathVariable String roomId,
+            @Valid @RequestBody com.examify.examify.backend.dto.exam.SubmissionRequest request
+    ) {
+        return ResponseEntity.ok(examRoomService.submitRoom(roomId, request));
     }
 }

@@ -12,6 +12,9 @@ public class ExamResponse {
     private String description;
     private String subject;
     private String status;
+    private Integer duration;
+    private Integer passScore;
+    private boolean isShuffled;
     private long questionCount;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

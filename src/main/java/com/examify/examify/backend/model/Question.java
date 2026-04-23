@@ -12,7 +12,9 @@ public class Question {
     @Id
     private String id;
     private String examId;
+    private String teacherId;
     private String content;
+    private String subject; // Môn học (Toán, Văn, Anh, IT...)
     private String type; // "multiple_choice" | "multiple_answer" | "essay"
     private List<Choice> choices;
     private List<String> correctAnswers;
@@ -20,7 +22,6 @@ public class Question {
     private String scoringCriteria;
     private String explanation;
     private String difficulty; // "easy" | "medium" | "hard"
-    private String subject;
     private String topic;
     private List<String> tags;
     private int orderIndex;

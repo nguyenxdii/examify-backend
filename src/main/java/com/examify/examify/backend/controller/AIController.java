@@ -48,4 +48,18 @@ public class AIController {
     public ResponseEntity<AiGreetingResponse> getGreeting(@RequestBody AiGreetingRequest request) {
         return ResponseEntity.ok(geminiService.getGreeting(request));
     }
+
+    @PostMapping("/suggest-topic")
+    public ResponseEntity<Map<String, String>> suggestTopic(@RequestBody Map<String, String> request) {
+        String content = request.get("content");
+        String topic = geminiService.suggestTopic(content);
+        return ResponseEntity.ok(Map.of("topic", topic));
+    }
+
+    @PostMapping("/analyze-raw-question")
+    public ResponseEntity<String> analyzeRawQuestion(@RequestBody Map<String, String> request) {
+        String rawText = request.get("rawText");
+        String result = geminiService.analyzeRawQuestion(rawText);
+        return ResponseEntity.ok(result);
+    }
 }

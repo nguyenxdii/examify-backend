@@ -15,6 +15,9 @@ public class Exam {
     private String description;
     private String subject;
     private String status; // "draft" | "ready" | "shared"
+    private Integer duration; // in minutes
+    private Integer passScore; // passing score
+    private boolean isShuffled;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

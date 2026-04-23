@@ -33,8 +33,7 @@ public class GeminiService {
     private final ObjectMapper objectMapper;
     private final RestTemplate restTemplate;
 
-    private static final String GEMINI_URL =
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=";
+    private static final String GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=";
 
     // ===== BƯỚC 1: Validate nội dung (Chủ đề tự do) =====
     public ValidateResponse validate(AnalyzeRequest request) {
@@ -58,15 +57,16 @@ public class GeminiService {
             GenerateAiResponse response = parseGenerateResponse(raw);
             System.out.println("--- [FINAL RESPONSE OBJECT] ---");
             System.out.println("isValid: " + response.isValid());
-            System.out.println("questions count: " + (response.getQuestions() != null ? response.getQuestions().size() : "null"));
+            System.out.println(
+                    "questions count: " + (response.getQuestions() != null ? response.getQuestions().size() : "null"));
             return response;
         } catch (Exception e) {
             String detailedError = e.getMessage() != null ? e.getMessage() : "Lỗi không xác định";
             System.err.println("Error in generate: " + detailedError);
             return GenerateAiResponse.builder()
-                .isValid(false)
-                .reason("AI Failure: " + detailedError)
-                .build();
+                    .isValid(false)
+                    .reason("AI Failure: " + detailedError)
+                    .build();
         }
     }
 
@@ -80,7 +80,8 @@ public class GeminiService {
             return analyze(request);
         } catch (Exception e) {
             System.err.println("Error in analyzeFile: " + e.getMessage());
-            AnalyzeResponse response = new AnalyzeResponse(0, 0, 0, 0, List.of(), "Lỗi khi xử lý file: " + e.getMessage());
+            AnalyzeResponse response = new AnalyzeResponse(0, 0, 0, 0, List.of(),
+                    "Lỗi khi xử lý file: " + e.getMessage());
             response.setSufficient(false);
             return response;
         }
@@ -88,7 +89,8 @@ public class GeminiService {
 
     public String extractTextFromFile(MultipartFile file) {
         String filename = file.getOriginalFilename();
-        if (filename == null) return "";
+        if (filename == null)
+            return "";
 
         try {
             if (filename.toLowerCase().endsWith(".pdf")) {
@@ -98,7 +100,7 @@ public class GeminiService {
                 }
             } else if (filename.toLowerCase().endsWith(".docx")) {
                 try (XWPFDocument document = new XWPFDocument(file.getInputStream());
-                     XWPFWordExtractor extractor = new XWPFWordExtractor(document)) {
+                        XWPFWordExtractor extractor = new XWPFWordExtractor(document)) {
                     return extractor.getText();
                 }
             } else if (filename.toLowerCase().endsWith(".txt")) {
@@ -124,32 +126,32 @@ public class GeminiService {
             String url = GEMINI_URL + apiKey;
 
             Map<String, Object> body = Map.of(
-                "contents", List.of(Map.of(
-                    "parts", List.of(Map.of("text", prompt))
-                )),
-                "generationConfig", Map.of(
-                    "temperature", 0.7,
-                    "maxOutputTokens", 8192
-                )
-            );
+                    "contents", List.of(Map.of(
+                            "parts", List.of(Map.of("text", prompt)))),
+                    "generationConfig", Map.of(
+                            "temperature", 0.7,
+                            "maxOutputTokens", 20000));
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
 
             try {
-                ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
-                JsonNode root = objectMapper.readTree(response.getBody());
-                
+                // Sử dụng exchange để kiểm soát encoding tốt hơn nếu cần
+                ResponseEntity<byte[]> responseEntity = restTemplate.postForEntity(url, entity, byte[].class);
+                String responseBody = new String(responseEntity.getBody(), java.nio.charset.StandardCharsets.UTF_8);
+                JsonNode root = objectMapper.readTree(responseBody);
+
                 // Kiểm tra nếu bị chặn bởi Safety hoặc lỗi khác
                 JsonNode candidates = root.path("candidates");
                 if (candidates.isMissingNode() || !candidates.has(0)) {
                     // Thử tìm error message từ API
                     String errorMessage = root.path("error").path("message").asText(null);
-                    if (errorMessage != null) throw new RuntimeException("Gemini API Error: " + errorMessage);
+                    if (errorMessage != null)
+                        throw new RuntimeException("Gemini API Error: " + errorMessage);
                     throw new RuntimeException("Gemini API từ chối phản hồi (có thể do bộ lọc an toàn).");
                 }
-                
+
                 JsonNode firstCandidate = candidates.get(0);
                 String finishReason = firstCandidate.path("finishReason").asText("");
                 if ("SAFETY".equals(finishReason)) {
@@ -157,20 +159,23 @@ public class GeminiService {
                 }
 
                 String result = firstCandidate.path("content").path("parts").get(0)
-                           .path("text").asText();
-                
+                        .path("text").asText();
+
                 // Logging feedback for debugging
                 System.out.println("--- [GEMINI RESPONSE] ---");
                 System.out.println(result);
                 System.out.println("-------------------------");
-                
+
                 return result;
             } catch (Exception e) {
                 String msg = e.getMessage() != null ? e.getMessage() : "";
                 // Nếu lỗi do hết quota (429), key không hợp lệ (401) hoặc máy chủ quá tải (503)
                 if (msg.contains("429") || msg.contains("401") || msg.contains("503")) {
                     System.out.println("Gemini API Busy/Error (503/429/401). Retrying with next key in 1s...");
-                    try { Thread.sleep(1000); } catch (InterruptedException ignored) {}
+                    try {
+                        Thread.sleep(1000);
+                    } catch (InterruptedException ignored) {
+                    }
                     currentKeyIndex = (currentKeyIndex + 1) % keys.size();
                     attempts++;
                     continue;
@@ -185,61 +190,61 @@ public class GeminiService {
     private String buildValidatePrompt(String content, String inputType) {
         String typeDesc = "topic".equals(inputType) ? "Chủ đề tự do" : "Văn bản tài liệu";
         return """
-            Bạn là bộ lọc thông minh cho hệ thống tạo đề thi giáo dục.
-            Loại input: %s
-            
-            Nội dung user nhập:
-            ---
-            %s
-            ---
-            
-            BƯỚC 1 — PHÂN TÍCH NỘI DUNG:
-            Đọc kỹ toàn bộ nội dung. Kiểm tra xem có chứa bất kỳ thông tin nào
-            liên quan đến chủ đề học thuật, môn học, bài học, hoặc kiến thức
-            có thể dùng để tạo câu hỏi thi không.
-            
-            Lưu ý quan trọng: User có thể gửi câu hỗn hợp kiểu
-            "Chào bạn, giúp mình tạo đề về [chủ đề X] nhé" — trong trường hợp
-            này PHẢI extract chủ đề X và coi là HỢP LỆ.
-            
-            KHÔNG HỢP LỆ khi và chỉ khi:
-            - Toàn bộ nội dung chỉ là chào hỏi/spam/vô nghĩa, KHÔNG có bất kỳ
-              chủ đề học thuật nào có thể extract được
-            - Chỉ ghi tên môn học không có context gì thêm ("Toán", "Lịch sử")
-            - Không đủ thông tin để tạo ít nhất 5 câu hỏi mà không cần bịa
-            
-            HỢP LỆ khi:
-            - Có thể extract được ít nhất 1 chủ đề học thuật rõ ràng
-            - Dù có lời chào hay câu yêu cầu bên ngoài, phần nội dung học thuật
-              vẫn đủ để tạo câu hỏi
-            
-            BƯỚC 2 — TRẢ VỀ JSON:
-            Nếu HỢP LỆ:
-            {
-              "isValid": true,
-              "extractedTopic": "chủ đề đã extract được, bỏ phần chào hỏi",
-              "reason": "Đã tìm thấy chủ đề: [tên chủ đề]",
-              "detectedLanguage": "vi"
-            }
-            
-            Nếu KHÔNG HỢP LỆ:
-            {
-              "isValid": false,
-              "extractedTopic": null,
-              "reason": "lý do thân thiện, gợi ý cụ thể user nên nhập gì",
-              "detectedLanguage": "vi"
-            }
-            
-            QUY TẮC BẮT BUỘC:
-            - Trả về JSON thuần, tuyệt đối không có markdown, không có ```
-            - reason phải viết bằng ngôn ngữ của user (vi hoặc en)
-            - reason khi isValid=false phải thân thiện, không phán xét,
-              ví dụ: "Nội dung chưa rõ chủ đề học tập. Bạn có thể nhập kiểu:
-              'Lịch sử Việt Nam thế kỷ 20' hoặc 'Hàm số lớp 10 chương 2' nhé!"
-            - Nếu isValid=true, extractedTopic sẽ được dùng thay content gốc
-              để generate câu hỏi → phải đủ rõ ràng
-            - maxOutputTokens cho call này: 200, không cần nhiều hơn
-            """.formatted(typeDesc, content);
+                Bạn là bộ lọc thông minh cho hệ thống tạo đề thi giáo dục.
+                Loại input: %s
+
+                Nội dung user nhập:
+                ---
+                %s
+                ---
+
+                BƯỚC 1 — PHÂN TÍCH NỘI DUNG:
+                Đọc kỹ toàn bộ nội dung. Kiểm tra xem có chứa bất kỳ thông tin nào
+                liên quan đến chủ đề học thuật, môn học, bài học, hoặc kiến thức
+                có thể dùng để tạo câu hỏi thi không.
+
+                Lưu ý quan trọng: User có thể gửi câu hỗn hợp kiểu
+                "Chào bạn, giúp mình tạo đề về [chủ đề X] nhé" — trong trường hợp
+                này PHẢI extract chủ đề X và coi là HỢP LỆ.
+
+                KHÔNG HỢP LỆ khi và chỉ khi:
+                - Toàn bộ nội dung chỉ là chào hỏi/spam/vô nghĩa, KHÔNG có bất kỳ
+                  chủ đề học thuật nào có thể extract được
+                - Chỉ ghi tên môn học không có context gì thêm ("Toán", "Lịch sử")
+                - Không đủ thông tin để tạo ít nhất 5 câu hỏi mà không cần bịa
+
+                HỢP LỆ khi:
+                - Có thể extract được ít nhất 1 chủ đề học thuật rõ ràng
+                - Dù có lời chào hay câu yêu cầu bên ngoài, phần nội dung học thuật
+                  vẫn đủ để tạo câu hỏi
+
+                BƯỚC 2 — TRẢ VỀ JSON:
+                Nếu HỢP LỆ:
+                {
+                  "isValid": true,
+                  "extractedTopic": "chủ đề đã extract được, bỏ phần chào hỏi",
+                  "reason": "Đã tìm thấy chủ đề: [tên chủ đề]",
+                  "detectedLanguage": "vi"
+                }
+
+                Nếu KHÔNG HỢP LỆ:
+                {
+                  "isValid": false,
+                  "extractedTopic": null,
+                  "reason": "lý do thân thiện, gợi ý cụ thể user nên nhập gì",
+                  "detectedLanguage": "vi"
+                }
+
+                QUY TẮC BẮT BUỘC:
+                - Trả về JSON thuần, tuyệt đối không có markdown, không có ```
+                - reason phải viết bằng ngôn ngữ của user (vi hoặc en)
+                - reason khi isValid=false phải thân thiện, không phán xét,
+                  ví dụ: "Nội dung chưa rõ chủ đề học tập. Bạn có thể nhập kiểu:
+                  'Lịch sử Việt Nam thế kỷ 20' hoặc 'Hàm số lớp 10 chương 2' nhé!"
+                - Nếu isValid=true, extractedTopic sẽ được dùng thay content gốc
+                  để generate câu hỏi → phải đủ rõ ràng
+                - maxOutputTokens cho call này: 200, không cần nhiều hơn
+                """.formatted(typeDesc, content);
     }
 
     // ===== PROMPT GENERATE (Validate + Generate) =====
@@ -248,77 +253,79 @@ public class GeminiService {
         String difficultyNote = buildDifficultyNote(request);
 
         return """
-            Bạn là một trợ lý giáo dục thông minh.
-            
-            NHIỆM VỤ:
-            Dựa trên nội dung/chủ đề dưới đây, hãy tạo bộ câu hỏi thi chất lượng.
-            
-            Nội dung user cung cấp:
-            ---
-            %s
-            ---
-            
-            YÊU CẦU CẤU TRÚC ĐỀ THI:
-            - Trắc nghiệm 1 đáp án (multiple_choice): %d câu
-            - Trắc nghiệm nhiều đáp án (multiple_answer): %d câu
-            - Tự luận (essay): %d câu
-            - %s
-            
-            QUY TẮC XỬ LÝ:
-            1. Nếu nội dung là một chủ đề (như "Toán 12", "Hồ Chí Minh"): Hãy dùng kiến thức chuyên gia để soạn đề.
-            2. Nếu nội dung là câu yêu cầu (ví dụ: "tạo cho mình đề về toán lớp 4 nhé"): Hãy tự động trích xuất chủ đề chính (toán lớp 4) và tiến hành soạn đề.
-            3. Nếu nội dung là yêu cầu SINH LẠI một câu hỏi (Ví dụ: "Hãy sinh lại câu hỏi sau..."):
-               - Hãy tạo ra một câu hỏi MỚI hoàn toàn, khai thác khía cạnh khác của cùng CHỦ ĐỀ.
-               - Tuyệt đối không được giữ nguyên cấu trúc cũ và chỉ thay đổi số liệu/tên gọi.
-               - Đảm bảo giữ đúng ĐỘ KHÓ và LOẠI CÂU HỎI (multiple_choice/multiple_answer/essay).
-               - Đảm bảo câu hỏi mới không trùng lặp nội dung với câu cũ.
-            4. Nếu nội dung là văn bản dài: Hãy bám sát kiến thức trong văn bản.
-            4. Nếu nội dung hoàn toàn vô nghĩa (ví dụ "abc", "123", "...") hoặc vi phạm an toàn: 
-               - Đặt "isValid": false
-               - "reason": "Lý do cụ thể giúp người dùng sửa lại"
-               - "questions": []
-            5. Ngược lại:
-               - Đặt "isValid": true
-               - "reason": "Nội dung hợp lệ"
-               - "suggestedTitle": "Tên đề thi phù hợp"
-               - "questions": [danh sách câu hỏi]
-            
-            TRẢ VỀ JSON TUYỆT ĐỐI (không markdown):
-            {
-              "isValid": true/false,
-              "reason": "...",
-              "suggestedTitle": "...",
-              "questions": [
+                Bạn là một trợ lý giáo dục thông minh.
+
+                NHIỆM VỤ:
+                Dựa trên nội dung/chủ đề dưới đây, hãy tạo bộ câu hỏi thi chất lượng.
+
+                Nội dung user cung cấp:
+                ---
+                %s
+                ---
+
+                YÊU CẦU CẤU TRÚC ĐỀ THI:
+                - Trắc nghiệm 1 đáp án (multiple_choice): %d câu
+                - Trắc nghiệm nhiều đáp án (multiple_answer): %d câu
+                - Tự luận (essay): %d câu
+                - %s
+
+                QUY TẮC XỬ LÝ:
+                1. Nếu nội dung là một chủ đề (như "Toán 12", "Hồ Chí Minh"): Hãy dùng kiến thức chuyên gia để soạn đề.
+                2. Nếu nội dung là câu yêu cầu (ví dụ: "tạo cho mình đề về toán lớp 4 nhé"): Hãy tự động trích xuất chủ đề chính (toán lớp 4) và tiến hành soạn đề.
+                3. Nếu nội dung là yêu cầu SINH LẠI một câu hỏi (Ví dụ: "Hãy sinh lại câu hỏi sau..."):
+                   - Hãy tạo ra một câu hỏi MỚI hoàn toàn, khai thác khía cạnh khác của cùng CHỦ ĐỀ.
+                   - Tuyệt đối không được giữ nguyên cấu trúc cũ và chỉ thay đổi số liệu/tên gọi.
+                   - Đảm bảo giữ đúng ĐỘ KHÓ và LOẠI CÂU HỎI (multiple_choice/multiple_answer/essay).
+                   - Đảm bảo câu hỏi mới không trùng lặp nội dung với câu cũ.
+                4. Nếu nội dung là văn bản dài: Hãy bám sát kiến thức trong văn bản.
+                4. Nếu nội dung hoàn toàn vô nghĩa (ví dụ "abc", "123", "...") hoặc vi phạm an toàn:
+                   - Đặt "isValid": false
+                   - "reason": "Lý do cụ thể giúp người dùng sửa lại"
+                   - "questions": []
+                5. Ngược lại:
+                   - Đặt "isValid": true
+                   - "reason": "Nội dung hợp lệ"
+                   - "suggestedTitle": "Tên đề thi phù hợp"
+                   - "suggestedTopic": "Chủ đề bao quát nhất cho cả bộ câu hỏi (1-3 từ)"
+                   - "questions": [danh sách câu hỏi]
+
+                TRẢ VỀ JSON TUYỆT ĐỐI (không markdown):
                 {
-                  "content": "...",
-                  "type": "multiple_choice/multiple_answer/essay",
-                  "choices": [{"key":"A","content":"..."}, ...],
-                  "correctAnswers": ["A"],
-                  "sampleAnswer": "...",
-                  "scoringCriteria": "...",
-                  "explanation": "...",
-                  "difficulty": "easy/medium/hard",
-                  "topic": "...",
-                  "tags": ["..."]
+                  "isValid": true/false,
+                  "reason": "...",
+                  "suggestedTitle": "...",
+                  "suggestedTopic": "...",
+                  "questions": [
+                    {
+                      "content": "...",
+                      "type": "multiple_choice/multiple_answer/essay",
+                      "choices": [{"key":"A","content":"..."}, ...],
+                      "correctAnswers": ["A"],
+                      "sampleAnswer": "...",
+                      "scoringCriteria": "...",
+                      "explanation": "...",
+                      "difficulty": "easy/medium/hard",
+                      "topic": "...",
+                      "tags": ["..."]
+                    }
+                  ]
                 }
-              ]
-            }
-            
-            QUY TẮC BẮT BUỘC:
-            - Trả về JSON thuần, tuyệt đối không có markdown, không có ```
-            - multiple_choice: correctAnswers có đúng 1 phần tử
-            - multiple_answer: correctAnswers có 2+ phần tử
-            - essay: choices=[], correctAnswers=[], phải có sampleAnswer và scoringCriteria
-            - Câu hỏi rõ ràng, chính xác, không trùng lặp
-            - Toàn bộ nội dung câu hỏi viết bằng %s
-            """.formatted(
-                request.getContent(),
-                request.getMultipleChoice(),
-                request.getMultipleAnswer(),
-                request.getEssay(),
-                difficultyNote,
-                lang
-            );
+
+                QUY TẮC BẮT BUỘC:
+                - Trả về JSON thuần, tuyệt đối không có markdown, không có ```
+                - multiple_choice: correctAnswers có đúng 1 phần tử
+                - multiple_answer: correctAnswers có 2+ phần tử
+                - essay: choices=[], correctAnswers=[], phải có sampleAnswer và scoringCriteria
+                - Câu hỏi rõ ràng, chính xác, không trùng lặp
+                - Toàn bộ nội dung câu hỏi viết bằng %s
+                """
+                .formatted(
+                        request.getContent(),
+                        request.getMultipleChoice(),
+                        request.getMultipleAnswer(),
+                        request.getEssay(),
+                        difficultyNote,
+                        lang);
     }
 
     // ===== PROMPT PHÂN TÍCH CHI TIẾT =====
@@ -327,54 +334,55 @@ public class GeminiService {
         String langName = "en".equals(request.getLanguage()) ? "English" : "Tiếng Việt";
 
         return """
-            Bạn là chuyên gia giáo dục. Nhiệm vụ của bạn là phân tích %s sau đây bằng ngôn ngữ %s.
-            
-            Nội dung:
-            %s
-            
-            ===== BƯỚC 1: KIỂM TRA TÍNH PHÙ HỢP (NGHIÊM NGẶT) =====
-            Bạn PHẢI trả lời isSufficient = false nếu:
-            - Nội dung là DANH SÁCH cá nhân: Tên học sinh, mã số sinh viên, giới tính, bảng điểm cá nhân, danh sách nhân viên. (TUYỆT ĐỐI không dùng những thứ này để tạo câu hỏi thống kê/xử lý thông tin).
-            - Nội dung chỉ là chào hỏi: "Chào bạn", "Tôi là Duy", "Giúp tôi với".
-            - Nội dung vô nghĩa/spam: "abc", "123", "vcl".
-            - Nội dung mang tính chất riêng tư, không phải kiến thức học thuật.
-            
-            Bạn CHỈ trả lời isSufficient = true nếu:
-            - Đây là một bài học, tài liệu lý thuyết, kiến thức khoa học, lịch sử, văn học hoặc bài tập cụ thể.
-            
-            ===== BƯỚC 2: GỢI Ý (TỔNG CỘNG TỐI ĐA 50 CÂU) =====
-            Nếu isSufficient = true, hãy phân chia số câu hỏi hợp lý (tổng không quá 50) sao cho phù hợp với nội dung:
-            1. Phân chia theo LOẠI CÂU:
-               - suggestedMultipleChoice (TN 1 đáp án)
-               - suggestedMultipleAnswer (TN nhiều đáp án)
-               - suggestedEssay (Tự luận)
-               => Tổng 3 cái này phải <= 50 (Nên gợi ý khoảng 10-50 tùy độ dài tài liệu).
-            2. Phân chia theo ĐỘ KHÓ:
-               - suggestedEasy (Dễ)
-               - suggestedMedium (Vừa)
-               - suggestedHard (Khó)
-               => Tổng 3 cái này phải BẰNG đúng tổng ở phần loại câu.
-            
-            ===== QUY TẮC NGÔN NGỮ =====
-            Các field: message, suggestedTitle, suggestedDescription, detectedTopics, summary 
-            phải bằng %s.
-            
-            ===== ĐỊNH DẠNG JSON (KHÔNG MARKDOWN) =====
-            {
-              "isSufficient": true,
-              "message": "Nội dung hợp lệ.",
-              "suggestedTitle": "...",
-              "suggestedDescription": "...",
-              "suggestedMultipleChoice": 30,
-              "suggestedMultipleAnswer": 15,
-              "suggestedEssay": 5,
-              "suggestedEasy": 20,
-              "suggestedMedium": 20,
-              "suggestedHard": 10,
-              "detectedTopics": [...],
-              "summary": "..."
-            }
-            """.formatted(typeDesc, langName, request.getContent(), langName);
+                Bạn là chuyên gia giáo dục. Nhiệm vụ của bạn là phân tích %s sau đây bằng ngôn ngữ %s.
+
+                Nội dung:
+                %s
+
+                ===== BƯỚC 1: KIỂM TRA TÍNH PHÙ HỢP (NGHIÊM NGẶT) =====
+                Bạn PHẢI trả lời isSufficient = false nếu:
+                - Nội dung là DANH SÁCH cá nhân: Tên học sinh, mã số sinh viên, giới tính, bảng điểm cá nhân, danh sách nhân viên. (TUYỆT ĐỐI không dùng những thứ này để tạo câu hỏi thống kê/xử lý thông tin).
+                - Nội dung chỉ là chào hỏi: "Chào bạn", "Tôi là Duy", "Giúp tôi với".
+                - Nội dung vô nghĩa/spam: "abc", "123", "vcl".
+                - Nội dung mang tính chất riêng tư, không phải kiến thức học thuật.
+
+                Bạn CHỈ trả lời isSufficient = true nếu:
+                - Đây là một bài học, tài liệu lý thuyết, kiến thức khoa học, lịch sử, văn học hoặc bài tập cụ thể.
+
+                ===== BƯỚC 2: GỢI Ý (TỔNG CỘNG TỐI ĐA 50 CÂU) =====
+                Nếu isSufficient = true, hãy phân chia số câu hỏi hợp lý (tổng không quá 50) sao cho phù hợp với nội dung:
+                1. Phân chia theo LOẠI CÂU:
+                   - suggestedMultipleChoice (TN 1 đáp án)
+                   - suggestedMultipleAnswer (TN nhiều đáp án)
+                   - suggestedEssay (Tự luận)
+                   => Tổng 3 cái này phải <= 50 (Nên gợi ý khoảng 10-50 tùy độ dài tài liệu).
+                2. Phân chia theo ĐỘ KHÓ:
+                   - suggestedEasy (Dễ)
+                   - suggestedMedium (Vừa)
+                   - suggestedHard (Khó)
+                   => Tổng 3 cái này phải BẰNG đúng tổng ở phần loại câu.
+
+                ===== QUY TẮC NGÔN NGỮ =====
+                Các field: message, suggestedTitle, suggestedDescription, detectedTopics, summary
+                phải bằng %s.
+
+                ===== ĐỊNH DẠNG JSON (KHÔNG MARKDOWN) =====
+                {
+                  "isSufficient": true,
+                  "message": "Nội dung hợp lệ.",
+                  "suggestedTitle": "...",
+                  "suggestedDescription": "...",
+                  "suggestedMultipleChoice": 30,
+                  "suggestedMultipleAnswer": 15,
+                  "suggestedEssay": 5,
+                  "suggestedEasy": 20,
+                  "suggestedMedium": 20,
+                  "suggestedHard": 10,
+                  "detectedTopics": [...],
+                  "summary": "..."
+                }
+                """
+                .formatted(typeDesc, langName, request.getContent(), langName);
     }
 
     // ===== PROMPT SINH CÂU HỎI (BẢN CŨ - KHÔNG DÙNG) =====
@@ -382,58 +390,59 @@ public class GeminiService {
         String difficultyNote = buildDifficultyNote(request);
 
         return """
-            Bạn là chuyên gia giáo dục. Sinh câu hỏi từ nội dung sau.
-            
-            Nội dung/Chủ đề: %s
-            
-            Yêu cầu:
-            - Trắc nghiệm 1 đáp án (multiple_choice): %d câu
-            - Trắc nghiệm nhiều đáp án (multiple_answer): %d câu
-            - Tự luận (essay): %d câu
-            - %s
-            
-            Trả về JSON array (không có markdown, không có ```):
-            [
-              {
-                "content": "Nội dung câu hỏi?",
-                "type": "multiple_choice",
-                "choices": [
-                  {"key": "A", "content": "Đáp án A"},
-                  {"key": "B", "content": "Đáp án B"},
-                  {"key": "C", "content": "Đáp án C"},
-                  {"key": "D", "content": "Đáp án D"}
-                ],
-                "correctAnswers": ["A"],
-                "sampleAnswer": "Câu trả lời mẫu (nếu là tự luận)",
-                "scoringCriteria": "Tiêu chí chấm điểm (nếu là tự luận)",
-                "explanation": "Giải thích đáp án",
-                "difficulty": "medium",
-                "topic": "chủ đề con",
-                "tags": ["tag1", "tag2"]
-              }
-            ]
-            
-            Lưu ý:
-            - multiple_choice: correctAnswers chỉ có 1 phần tử
-            - multiple_answer: correctAnswers có 2+ phần tử
-            - essay: choices = [], correctAnswers = [], bắt buộc có sampleAnswer và scoringCriteria
-            - Câu hỏi phải rõ ràng, chính xác, không trùng lặp
-            - %s
-            """.formatted(
+                Bạn là chuyên gia giáo dục. Sinh câu hỏi từ nội dung sau.
+
+                Nội dung/Chủ đề: %s
+
+                Yêu cầu:
+                - Trắc nghiệm 1 đáp án (multiple_choice): %d câu
+                - Trắc nghiệm nhiều đáp án (multiple_answer): %d câu
+                - Tự luận (essay): %d câu
+                - %s
+
+                Trả về JSON array (không có markdown, không có ```):
+                [
+                  {
+                    "content": "Nội dung câu hỏi?",
+                    "type": "multiple_choice",
+                    "choices": [
+                      {"key": "A", "content": "Đáp án A"},
+                      {"key": "B", "content": "Đáp án B"},
+                      {"key": "C", "content": "Đáp án C"},
+                      {"key": "D", "content": "Đáp án D"}
+                    ],
+                    "correctAnswers": ["A"],
+                    "sampleAnswer": "Câu trả lời mẫu (nếu là tự luận)",
+                    "scoringCriteria": "Tiêu chí chấm điểm (nếu là tự luận)",
+                    "explanation": "Giải thích đáp án",
+                    "difficulty": "medium",
+                    "topic": "chủ đề con",
+                    "tags": ["tag1", "tag2"]
+                  }
+                ]
+
+                Lưu ý:
+                - multiple_choice: correctAnswers chỉ có 1 phần tử
+                - multiple_answer: correctAnswers có 2+ phần tử
+                - essay: choices = [], correctAnswers = [], bắt buộc có sampleAnswer và scoringCriteria
+                - Câu hỏi phải rõ ràng, chính xác, không trùng lặp
+                - %s
+                """.formatted(
                 request.getContent(),
                 request.getMultipleChoice(),
                 request.getMultipleAnswer(),
                 request.getEssay(),
                 difficultyNote,
-                request.isDetailedExplanation() ? "Yêu cầu giải thích (explanation) cực kỳ chi tiết, trình bày từng bước giải quyết vấn đề (step-by-step)." : "Giải thích ngắn gọn, súc tích."
-            );
+                request.isDetailedExplanation()
+                        ? "Yêu cầu giải thích (explanation) cực kỳ chi tiết, trình bày từng bước giải quyết vấn đề (step-by-step)."
+                        : "Giải thích ngắn gọn, súc tích.");
     }
 
     private String buildDifficultyNote(GenerateRequest request) {
         return "Số lượng câu theo mức độ: Dễ %d câu, Trung bình %d câu, Khó %d câu. Tổng cộng phải khớp với tổng số câu hỏi yêu cầu."
-            .formatted(request.getEasyCount(),
-                       request.getMediumCount(),
-                       request.getHardCount());
+                .formatted(request.getEasyCount(),
+                        request.getMediumCount(),
+                        request.getHardCount());
     }
 
     // ===== PARSE RESPONSE =====
@@ -443,7 +452,7 @@ public class GeminiService {
             JsonNode node = objectMapper.readTree(cleaned);
             List<String> topics = new ArrayList<>();
             node.path("detectedTopics").forEach(t -> topics.add(t.asText()));
-            
+
             AnalyzeResponse response = new AnalyzeResponse();
             response.setSuggestedTotal(50);
             response.setSuggestedMultipleChoice(node.path("suggestedMultipleChoice").asInt(30));
@@ -458,7 +467,7 @@ public class GeminiService {
             response.setMessage(node.path("message").asText(""));
             response.setSuggestedTitle(node.path("suggestedTitle").asText(""));
             response.setSuggestedDescription(node.path("suggestedDescription").asText(""));
-            
+
             return response;
         } catch (Exception e) {
             AnalyzeResponse fallback = new AnalyzeResponse();
@@ -473,11 +482,10 @@ public class GeminiService {
             String cleaned = cleanJson(raw);
             JsonNode node = objectMapper.readTree(cleaned);
             return new ValidateResponse(
-                node.path("isValid").asBoolean(false),
-                node.path("extractedTopic").asText(null),
-                node.path("reason").asText(""),
-                node.path("detectedLanguage").asText("vi")
-            );
+                    node.path("isValid").asBoolean(false),
+                    node.path("extractedTopic").asText(null),
+                    node.path("reason").asText(""),
+                    node.path("detectedLanguage").asText("vi"));
         } catch (Exception e) {
             return new ValidateResponse(false, null, "Lỗi kết nối AI validation.", "vi");
         }
@@ -488,12 +496,12 @@ public class GeminiService {
             String cleaned = cleanJson(raw);
             JsonNode node = objectMapper.readTree(cleaned);
             boolean isValid = node.path("isValid").asBoolean(false);
-            
+
             if (!isValid) {
                 return GenerateAiResponse.builder()
-                    .isValid(false)
-                    .reason(node.path("reason").asText("Nội dung không phù hợp."))
-                    .build();
+                        .isValid(false)
+                        .reason(node.path("reason").asText("Nội dung không phù hợp."))
+                        .build();
             }
 
             List<QuestionRequest> questions = new ArrayList<>();
@@ -505,15 +513,17 @@ public class GeminiService {
             }
 
             return GenerateAiResponse.builder()
-                .isValid(true)
-                .suggestedTitle(node.path("suggestedTitle").asText("Đề thi mới"))
-                .questions(questions)
-                .build();
+                    .isValid(true)
+                    .suggestedTitle(node.path("suggestedTitle").asText("Đề thi mới"))
+                    .suggestedTopic(node.path("suggestedTopic").asText(""))
+                    .questions(questions)
+                    .build();
         } catch (Exception e) {
             return GenerateAiResponse.builder()
-                .isValid(false)
-                .reason("Parse Error: Lỗi phân tích JSON từ AI (" + e.getMessage() + "). Phản hồi gốc: " + (raw != null && raw.length() > 100 ? raw.substring(0, 100) + "..." : raw))
-                .build();
+                    .isValid(false)
+                    .reason("Parse Error: Lỗi phân tích JSON từ AI (" + e.getMessage() + "). Phản hồi gốc: "
+                            + (raw != null && raw.length() > 100 ? raw.substring(0, 100) + "..." : raw))
+                    .build();
         }
     }
 
@@ -526,7 +536,7 @@ public class GeminiService {
         qr.setTopic(q.path("topic").asText(""));
         qr.setSampleAnswer(q.path("sampleAnswer").asText(null));
         qr.setScoringCriteria(q.path("scoringCriteria").asText(null));
-        
+
         // Tags
         List<String> tags = new ArrayList<>();
         if (q.has("tags")) {
@@ -601,36 +611,86 @@ public class GeminiService {
         }
     }
 
+    // ===== GỢI Ý CHỦ ĐỀ CÂU HỎI =====
+    public String suggestTopic(String questionContent) {
+        String prompt = """
+                Bạn là chuyên gia phân tích dữ liệu giáo dục.
+                Nhiệm vụ: Đọc nội dung câu hỏi sau và trả về DUY NHẤT một chủ đề (topic) ngắn gọn (1-3 từ).
+
+                Câu hỏi: "%s"
+
+                Yêu cầu:
+                - Chỉ trả về text chủ đề, không giải thích, không dấu ngoặc.
+                - Ví dụ: "Toán học", "Chiến tranh thế giới", "Lập trình Java", "Dịch bệnh".
+                - Nếu không xác định được, trả về "Chung".
+                """.formatted(questionContent);
+
+        try {
+            String result = callGemini(prompt);
+            return result.trim().replaceAll("\"", "");
+        } catch (Exception e) {
+            return "Chung";
+        }
+    }
+
+    // ===== PHÂN TÍCH CÂU HỎI THÔNG MINH =====
+    public String analyzeRawQuestion(String rawText) {
+        String prompt = """
+                Bạn là chuyên gia soạn thảo đề thi chuyên nghiệp.
+                Nhiệm vụ: Phân tích đoạn văn bản thô sau và chuyển thành cấu hình câu hỏi JSON.
+
+                Văn bản: "%s"
+
+                Yêu cầu JSON trả về:
+                {
+                  "content": "Nội dung câu hỏi (đã bỏ các ký tự thừa)",
+                  "type": "multiple_choice" (hoặc "multiple_answer" nếu có nhiều đáp án đúng, hoặc "essay" nếu không có đáp án lựa chọn),
+                  "choices": [ {"key": "A", "content": "..."}, ... ],
+                  "correctAnswers": ["A"], (mảng các key đúng)
+                  "difficulty": "easy" | "medium" | "hard",
+                  "topic": "Chủ đề ngắn gọn (1-3 từ)",
+                  "explanation": "Giải thích ngắn gọn (nếu có)"
+                }
+
+                Lưu ý: Chỉ trả về duy nhất khối JSON, không thêm văn bản khác.
+                """
+                .formatted(rawText);
+
+        return callGemini(prompt);
+    }
+
     // Xử lý JSON từ AI bền bỉ hơn
     private String cleanJson(String raw) {
-        if (raw == null) return "{}";
+        if (raw == null || raw.trim().isEmpty())
+            return "{}";
         String cleaned = raw.trim();
-        
-        // Tìm vị trí đầu tiên của { hoặc [
+
+        // Loại bỏ các thẻ markdown ```json và ```
+        cleaned = cleaned.replaceAll("(?s)^.*?```json", "");
+        cleaned = cleaned.replaceAll("(?s)```.*?$", "");
+
+        // Tìm vị trí đầu tiên và cuối cùng của cấu trúc JSON ({ hoặc [)
         int firstBrace = cleaned.indexOf('{');
         int firstBracket = cleaned.indexOf('[');
         int start = -1;
-        
+
         if (firstBrace != -1 && (firstBracket == -1 || firstBrace < firstBracket)) {
             start = firstBrace;
         } else if (firstBracket != -1) {
             start = firstBracket;
         }
-        
+
         if (start != -1) {
-            // Tìm vị trí cuối cùng của } hoặc ]
             int lastBrace = cleaned.lastIndexOf('}');
             int lastBracket = cleaned.lastIndexOf(']');
             int end = Math.max(lastBrace, lastBracket);
-            
+
             if (end > start) {
                 return cleaned.substring(start, end + 1);
             }
         }
-        
-        return cleaned.replaceAll("```json", "")
-                      .replaceAll("```", "")
-                      .trim();
+
+        return cleaned.trim();
     }
 
     // ===== SINH LỜI CHÀO DASHBOARD =====
@@ -641,42 +701,43 @@ public class GeminiService {
     }
 
     private String buildGreetingPrompt(AiGreetingRequest request) {
-        String lang = (request.getLanguage() != null && request.getLanguage().startsWith("en")) ? "English" : "Vietnamese";
-        
+        String lang = (request.getLanguage() != null && request.getLanguage().startsWith("en")) ? "English"
+                : "Vietnamese";
+
         return """
-            Bạn là SynDe — người bạn nhỏ thân thiết của giáo viên, không phải trợ lý công việc.
-            Tên: %s | Ngôn ngữ: %s | Thời gian: %s | Đang ở trang: %s
-            
-            Nhiệm vụ: Tạo 1 lời chào ngắn, ấm áp, tự nhiên như tin nhắn từ người bạn thực sự quan tâm.
-            
-            Tone theo thời gian:
-            - 5h-9h: Tươi tắn, tiếp thêm năng lượng buổi sáng
-            - 9h-12h: Nhẹ nhàng, đồng hành
-            - 12h-14h: Nhắc nghỉ ngơi, ăn trưa
-            - 14h-18h: Động lực nhẹ cho buổi chiều
-            - 18h-22h: Ấm áp buổi tối, hỏi thăm
-            - 22h+: Lo lắng nhẹ vì làm việc khuya, nhắc giữ sức khỏe
-            
-            Quy tắc bắt buộc (MANDATORY):
-            - Xưng "Em", gọi "Thầy/Cô" kèm theo tên giáo viên.
-            - Title: 4-6 từ, có cảm xúc thật.
-            - Subtitle: 10-18 từ, cụ thể theo thời điểm, không sáo rỗng.
-            - 1-2 emoji phù hợp cảm xúc, không spam.
-            - Tuyệt đối không dùng: "Em luôn ở đây", "Hãy để em giúp", "Chúc một ngày tốt lành".
-            - Đôi khi có thể đề cập nhẹ đến trang đang xem nhưng không gượng gạo.
-            
-            Trả về JSON duy nhất:
-            {
-              "title": "Tiêu đề (Vd: Thầy Dii mặc ấm nha! ❄️)",
-              "subtitle": "Lời chào (Vd: Sáng nay trời hơi lạnh, Thầy nhớ quàng khăn trước khi lên lớp nhé. Em đợi Thầy ở đây ạ.)"
-            }
-            """.formatted(
-                request.getPathname(),
-                request.getFullName(),
-                lang,
-                new Date().toString(),
-                request.getFullName()
-            );
+                Bạn là SynDe — người bạn nhỏ thân thiết của giáo viên, không phải trợ lý công việc.
+                Tên: %s | Ngôn ngữ: %s | Thời gian: %s | Đang ở trang: %s
+
+                Nhiệm vụ: Tạo 1 lời chào ngắn, ấm áp, tự nhiên như tin nhắn từ người bạn thực sự quan tâm.
+
+                Tone theo thời gian:
+                - 5h-9h: Tươi tắn, tiếp thêm năng lượng buổi sáng
+                - 9h-12h: Nhẹ nhàng, đồng hành
+                - 12h-14h: Nhắc nghỉ ngơi, ăn trưa
+                - 14h-18h: Động lực nhẹ cho buổi chiều
+                - 18h-22h: Ấm áp buổi tối, hỏi thăm
+                - 22h+: Lo lắng nhẹ vì làm việc khuya, nhắc giữ sức khỏe
+
+                Quy tắc bắt buộc (MANDATORY):
+                - Xưng "Em", gọi "Thầy/Cô" kèm theo tên giáo viên.
+                - Title: 4-6 từ, có cảm xúc thật.
+                - Subtitle: 10-18 từ, cụ thể theo thời điểm, không sáo rỗng.
+                - 1-2 emoji phù hợp cảm xúc, không spam.
+                - Tuyệt đối không dùng: "Em luôn ở đây", "Hãy để em giúp", "Chúc một ngày tốt lành".
+                - Đôi khi có thể đề cập nhẹ đến trang đang xem nhưng không gượng gạo.
+
+                Trả về JSON duy nhất:
+                {
+                  "title": "Tiêu đề (Vd: Thầy Dii mặc ấm nha! ❄️)",
+                  "subtitle": "Lời chào (Vd: Sáng nay trời hơi lạnh, Thầy nhớ quàng khăn trước khi lên lớp nhé. Em đợi Thầy ở đây ạ.)"
+                }
+                """
+                .formatted(
+                        request.getPathname(),
+                        request.getFullName(),
+                        lang,
+                        new Date().toString(),
+                        request.getFullName());
     }
 
     private AiGreetingResponse parseGreetingResponse(String raw) {
@@ -684,11 +745,56 @@ public class GeminiService {
             String cleaned = cleanJson(raw);
             JsonNode node = objectMapper.readTree(cleaned);
             return new AiGreetingResponse(
-                node.path("title").asText("Chào mừng trở lại!"),
-                node.path("subtitle").asText("Hôm nay Thầy/Cô thế nào ạ?")
-            );
+                    node.path("title").asText("Chào mừng trở lại!"),
+                    node.path("subtitle").asText("Hôm nay Thầy/Cô thế nào ạ?"));
         } catch (Exception e) {
             return new AiGreetingResponse("Chào mừng trở lại!", "Hệ thống đã sẵn sàng hỗ trợ Thầy/Cô.");
+        }
+    }
+    // ===== CHẤM ĐIỂM TỰ LUẬN (ĐÚNG/SAI) =====
+    public Map<String, Object> evaluateEssay(String content, String sampleAnswer, String criteria, String studentAnswer) {
+        String prompt = """
+                Bạn là chuyên gia khảo thí. Hãy đánh giá câu trả lời tự luận của học sinh là ĐÚNG hay SAI dựa trên thông tin sau:
+                
+                CÂU HỎI:
+                "%s"
+                
+                ĐÁP ÁN MẪU:
+                "%s"
+                
+                TIÊU CHÍ CHẤM ĐIỂM:
+                "%s"
+                
+                CÂU TRẢ LỜI CỦA HỌC SINH:
+                "%s"
+                
+                YÊU CẦU:
+                1. Đánh giá nhị phân: Trả về "correct" nếu học sinh nắm được ý chính và trả lời đúng trọng tâm. Trả về "incorrect" nếu sai hoàn toàn hoặc không liên quan.
+                2. Nếu câu trả lời ở mức chấp nhận được (trên 50%% ý), hãy coi là "correct".
+                3. Đưa ra nhận xét ngắn gọn (1 câu).
+                
+                TRẢ VỀ JSON DUY NHẤT (không markdown):
+                {
+                  "status": "correct" | "incorrect",
+                  "feedback": "..."
+                }
+                """.formatted(content, sampleAnswer, criteria, studentAnswer);
+
+        try {
+            String raw = callGemini(prompt);
+            String cleaned = cleanJson(raw);
+            JsonNode node = objectMapper.readTree(cleaned);
+            Map<String, Object> result = new HashMap<>();
+            
+            String status = node.path("status").asText("incorrect");
+            result.put("score", "correct".equalsIgnoreCase(status) ? 10.0 : 0.0);
+            result.put("feedback", node.path("feedback").asText("Không có nhận xét."));
+            return result;
+        } catch (Exception e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("score", 0.0);
+            error.put("feedback", "Lỗi AI chấm điểm: " + e.getMessage());
+            return error;
         }
     }
 }

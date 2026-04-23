@@ -78,4 +78,16 @@ public class ExamController {
             @RequestBody List<QuestionRequest> requests) {
         return ResponseEntity.ok(examService.saveBatchQuestions(examId, requests));
     }
+
+    @GetMapping("/questions/bank")
+    public ResponseEntity<List<com.examify.examify.backend.model.QuestionBank>> getQuestionBank() {
+        return ResponseEntity.ok(examService.getQuestionBank());
+    }
+
+    @PostMapping("/{examId}/submit")
+    public ResponseEntity<com.examify.examify.backend.model.Submission> submitPublic(
+            @PathVariable String examId,
+            @Valid @RequestBody SubmissionRequest request) {
+        return ResponseEntity.ok(examService.submitPublic(examId, request));
+    }
 }

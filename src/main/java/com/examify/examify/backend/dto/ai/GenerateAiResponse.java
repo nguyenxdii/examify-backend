@@ -18,5 +18,6 @@ public class GenerateAiResponse {
     private boolean isValid;
     private String reason;
     private String suggestedTitle;
+    private String suggestedTopic;
     private List<QuestionRequest> questions;
 }

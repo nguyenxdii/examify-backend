@@ -3,6 +3,7 @@ package com.examify.examify.backend.service;
 import com.examify.examify.backend.dto.room.*;
 import com.examify.examify.backend.model.*;
 import com.examify.examify.backend.repository.*;
+import com.examify.examify.backend.dto.exam.SubmissionRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -14,6 +15,9 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import org.springframework.web.multipart.MultipartFile;
 import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.xwpf.usermodel.*;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.text.PDFTextStripper;
 
 @Service
 @RequiredArgsConstructor
@@ -24,6 +28,8 @@ public class ExamRoomService {
     private final StudentListRepository studentListRepository;
     private final SubmissionRepository submissionRepository;
     private final SubmissionAnswerRepository submissionAnswerRepository;
+    private final QuestionRepository questionRepository;
+    private final GeminiService geminiService;
 
     private String getCurrentTeacherId() {
         User user = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
@@ -219,6 +225,10 @@ public class ExamRoomService {
         try {
             if (fileName != null && (fileName.endsWith(".xlsx") || fileName.endsWith(".xls"))) {
                 students = parseExcel(file, roomId);
+            } else if (fileName != null && fileName.endsWith(".docx")) {
+                students = parseDocx(file, roomId);
+            } else if (fileName != null && fileName.endsWith(".pdf")) {
+                students = parsePdf(file, roomId);
             } else {
                 students = parseTextFile(file, roomId);
             }
@@ -234,6 +244,37 @@ public class ExamRoomService {
         studentListRepository.saveAll(students);
         
         return getStudentList(roomId);
+    }
+
+    public StudentListResponse updateStudentManual(String roomId, String id, StudentListRequest.StudentEntry entry) {
+        ExamRoom room = examRoomRepository.findById(roomId)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy phòng thi"));
+        
+        if (!room.getTeacherId().equals(getCurrentTeacherId())) {
+            throw new RuntimeException("Quyền hạn không hợp lệ");
+        }
+
+        StudentList student = studentListRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy học sinh"));
+        
+        // Check if new SID exists in other entries (optional, but good)
+        if (!student.getStudentId().equals(entry.getStudentId()) && 
+            studentListRepository.existsByRoomIdAndStudentId(roomId, entry.getStudentId())) {
+            throw new RuntimeException("Học sinh với MSSV " + entry.getStudentId() + " đã tồn tại trong danh sách");
+        }
+
+        student.setStudentId(entry.getStudentId());
+        student.setStudentName(entry.getStudentName());
+        
+        StudentList saved = studentListRepository.save(student);
+        
+        StudentListResponse resp = new StudentListResponse();
+        resp.setId(saved.getId());
+        resp.setRoomId(saved.getRoomId());
+        resp.setStudentId(saved.getStudentId());
+        resp.setStudentName(saved.getStudentName());
+        resp.setHasSubmitted(!submissionRepository.findByRoomIdAndStudentId(roomId, saved.getStudentId()).isEmpty());
+        return resp;
     }
 
     public StudentListResponse addStudentManual(String roomId, StudentListRequest.StudentEntry entry) {
@@ -294,18 +335,118 @@ public class ExamRoomService {
         return students;
     }
 
+    private List<StudentList> parseDocx(MultipartFile file, String roomId) throws Exception {
+        List<StudentList> students = new ArrayList<>();
+        try (XWPFDocument doc = new XWPFDocument(file.getInputStream())) {
+            for (XWPFTable table : doc.getTables()) {
+                for (XWPFTableRow row : table.getRows()) {
+                    List<XWPFTableCell> cells = row.getTableCells();
+                    if (cells.size() >= 2) {
+                        String sid = cells.get(0).getText().trim();
+                        String name = cells.get(1).getText().trim();
+                        
+                        // Nếu cột đầu tiên là STT (số thứ tự), hãy thử lấy cột 1 và 2
+                        if (sid.matches("\\d+") && cells.size() >= 3) {
+                            sid = cells.get(1).getText().trim();
+                            name = cells.get(2).getText().trim();
+                        }
+
+                        if (!sid.isEmpty() && !"MSSV".equalsIgnoreCase(sid) && !"Mã số".equalsIgnoreCase(sid) && !"STT".equalsIgnoreCase(sid)) {
+                            StudentList student = new StudentList();
+                            student.setRoomId(roomId);
+                            student.setStudentId(sid);
+                            student.setStudentName(name);
+                            students.add(student);
+                        }
+                    }
+                }
+            }
+        }
+        return students;
+    }
+
+    private List<StudentList> parsePdf(MultipartFile file, String roomId) throws Exception {
+        List<StudentList> students = new ArrayList<>();
+        try (PDDocument document = org.apache.pdfbox.Loader.loadPDF(file.getBytes())) {
+            PDFTextStripper stripper = new PDFTextStripper();
+            String text = stripper.getText(document);
+            String[] lines = text.split("\\r?\\n");
+            for (String line : lines) {
+                String[] parts = line.trim().split("\\s+");
+                if (parts.length >= 2) {
+                    // Cố gắng tìm MSSV (thường là số)
+                    String sid = "";
+                    String name = "";
+                    
+                    if (parts[0].matches("\\d{5,10}")) { // MSSV thường dài
+                        sid = parts[0];
+                        name = line.replace(sid, "").trim();
+                    } else if (parts.length >= 3 && parts[1].matches("\\d{5,10}")) { // Có STT ở đầu
+                        sid = parts[1];
+                        name = line.substring(line.indexOf(sid) + sid.length()).trim();
+                    }
+
+                    if (!sid.isEmpty()) {
+                        StudentList student = new StudentList();
+                        student.setRoomId(roomId);
+                        student.setStudentId(sid);
+                        student.setStudentName(name);
+                        students.add(student);
+                    }
+                }
+            }
+        }
+        return students;
+    }
+
     private List<StudentList> parseExcel(MultipartFile file, String roomId) throws Exception {
         List<StudentList> students = new ArrayList<>();
         try (Workbook workbook = WorkbookFactory.create(file.getInputStream())) {
             Sheet sheet = workbook.getSheetAt(0);
+            
+            int idCol = -1;
+            int nameCol = -1;
+            
             for (Row row : sheet) {
-                // Skip rows that look like headers or are empty
-                if (row.getCell(0) == null) continue;
+                // Attempt to identify headers
+                if (idCol == -1 && nameCol == -1) {
+                    for (int i = 0; i < row.getLastCellNum(); i++) {
+                        String cellVal = getCellValueAsString(row.getCell(i));
+                        if (cellVal == null) continue;
+                        cellVal = cellVal.toLowerCase();
+                        if (cellVal.contains("mã số") || cellVal.contains("mssv") || cellVal.contains("student id")) {
+                            idCol = i;
+                        } else if (cellVal.contains("họ và tên") || cellVal.contains("họ tên") || cellVal.contains("name")) {
+                            nameCol = i;
+                        }
+                    }
+                    if (idCol != -1 && nameCol != -1) continue; // Skip header row
+                }
                 
-                String sid = getCellValueAsString(row.getCell(0));
-                String name = getCellValueAsString(row.getCell(1));
+                String col0 = getCellValueAsString(row.getCell(0));
+                String col1 = getCellValueAsString(row.getCell(1));
+                String col2 = getCellValueAsString(row.getCell(2));
                 
-                if (sid != null && !sid.isEmpty() && !"MSSV".equalsIgnoreCase(sid)) {
+                String sid = "";
+                String name = "";
+                
+                if (idCol != -1 && nameCol != -1) {
+                    sid = getCellValueAsString(row.getCell(idCol));
+                    name = getCellValueAsString(row.getCell(nameCol));
+                } else if (col0 != null && col1 != null) {
+                    if (col0.matches("\\d+") && col2 != null && !col2.isEmpty()) { 
+                        sid = col1;
+                        name = col2;
+                    } else {
+                        sid = col0;
+                        name = col1;
+                    }
+                }
+                
+                if (sid != null && !sid.isEmpty() && 
+                    !sid.toLowerCase().contains("mssv") && 
+                    !sid.toLowerCase().contains("mã số") &&
+                    !sid.toLowerCase().contains("stt")) {
                     StudentList student = new StudentList();
                     student.setRoomId(roomId);
                     student.setStudentId(sid.trim());
@@ -502,6 +643,138 @@ public class ExamRoomService {
 
         return getSubmissionDetail(roomId, submissionId);
     }
+
+    // ===== PUBLIC METHODS FOR STUDENTS =====
+
+    public Map<String, Object> getRoomPublic(String roomId) {
+        ExamRoom room = examRoomRepository.findById(roomId)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy phòng thi"));
+        
+        autoUpdateStatus(room);
+        
+        if ("pending".equals(room.getStatus())) {
+            throw new RuntimeException("Phòng thi chưa đến giờ mở");
+        }
+        if ("closed".equals(room.getStatus())) {
+            throw new RuntimeException("Phòng thi đã đóng");
+        }
+
+        Exam exam = examRepository.findById(room.getExamId()).orElseThrow();
+        List<Question> questions = questionRepository.findByExamIdOrderByOrderIndex(room.getExamId());
+        
+        Map<String, Object> resp = new HashMap<>();
+        resp.put("room", toResponse(room));
+        resp.put("questions", questions);
+        resp.put("shuffled", exam.isShuffled());
+        return resp;
+    }
+
+    public Submission submitRoom(String roomId, SubmissionRequest request) {
+        ExamRoom room = examRoomRepository.findById(roomId)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy phòng thi"));
+        
+        autoUpdateStatus(room);
+        if (!"open".equals(room.getStatus())) {
+            throw new RuntimeException("Phòng thi không ở trạng thái mở");
+        }
+
+        // Validate student if required
+        if (room.isRequireStudentList()) {
+            if (request.getStudentId() == null || request.getStudentId().trim().isEmpty()) {
+                throw new RuntimeException("Phòng thi yêu cầu nhập Mã số học sinh (Student ID)");
+            }
+            if (!studentListRepository.existsByRoomIdAndStudentId(roomId, request.getStudentId())) {
+                throw new RuntimeException("Mã số học sinh không nằm trong danh sách được phép dự thi");
+            }
+            
+            // Check max attempts
+            if (room.getMaxAttempts() > 0) {
+                long attempts = submissionRepository.countByRoomIdAndStudentId(roomId, request.getStudentId());
+                if (attempts >= room.getMaxAttempts()) {
+                    throw new RuntimeException("Bạn đã hết lượt làm bài (Tối đa " + room.getMaxAttempts() + " lần)");
+                }
+            }
+        }
+
+        List<Question> questions = questionRepository.findByExamIdOrderByOrderIndex(room.getExamId());
+        int totalQuestions = questions.size();
+        float totalEarnedScore = 0;
+        int correctCount = 0;
+        boolean hasEssay = false;
+
+        for (Question q : questions) {
+            List<String> studentAns = request.getAnswers().get(q.getId());
+            if ("essay".equals(q.getType())) {
+                hasEssay = true;
+                String studentText = (studentAns != null && !studentAns.isEmpty()) ? studentAns.get(0) : "";
+                if (!studentText.trim().isEmpty()) {
+                    Map<String, Object> aiResult = geminiService.evaluateEssay(
+                        q.getContent(), q.getSampleAnswer(), q.getScoringCriteria(), studentText
+                    );
+                    float score = ((Double) aiResult.get("score")).floatValue();
+                    totalEarnedScore += score;
+                    if (score >= 10.0f) correctCount++;
+                }
+            } else if (studentAns != null && q.getCorrectAnswers() != null) {
+                Set<String> studentSet = new HashSet<>(studentAns);
+                Set<String> correctSet = new HashSet<>(q.getCorrectAnswers());
+                if (studentSet.equals(correctSet) && !studentSet.isEmpty()) {
+                    totalEarnedScore += 10;
+                    correctCount++;
+                }
+            }
+        }
+
+        float finalScore = totalQuestions > 0 ? (totalEarnedScore / totalQuestions) : 0;
+
+        Submission submission = new Submission();
+        submission.setRoomId(roomId);
+        submission.setExamId(room.getExamId());
+        submission.setStudentName(request.getStudentName());
+        submission.setStudentId(request.getStudentId());
+        submission.setScore(finalScore);
+        submission.setTotalQuestions(totalQuestions);
+        submission.setCorrectCount(correctCount);
+        submission.setGradingStatus(hasEssay ? "ai_graded_essay" : "auto_graded");
+        submission.setStartedAt(LocalDateTime.now().minusMinutes(room.getDurationMinutes()));
+        submission.setSubmittedAt(LocalDateTime.now());
+        
+        // Save snapshot
+        submission.setQuestionSnapshot(new ArrayList<>(questions));
+
+        Submission saved = submissionRepository.save(submission);
+
+        // Save answers
+        for (Question q : questions) {
+            List<String> ans = request.getAnswers().get(q.getId());
+            if (ans != null) {
+                SubmissionAnswer sa = new SubmissionAnswer();
+                sa.setSubmissionId(saved.getId());
+                sa.setQuestionId(q.getId());
+                sa.setSelectedAnswer(ans);
+                if ("essay".equals(q.getType())) {
+                    String text = (ans != null && !ans.isEmpty()) ? ans.get(0) : "";
+                    sa.setEssayAnswer(text);
+                    if (!text.trim().isEmpty()) {
+                        Map<String, Object> aiResult = geminiService.evaluateEssay(
+                            q.getContent(), q.getSampleAnswer(), q.getScoringCriteria(), text
+                        );
+                        sa.setAiScore(((Double) aiResult.get("score")).floatValue());
+                        sa.setAiComment((String) aiResult.get("feedback"));
+                    }
+                } else {
+                    Set<String> sSet = new HashSet<>(ans);
+                    Set<String> cSet = new HashSet<>(q.getCorrectAnswers() != null ? q.getCorrectAnswers() : List.of());
+                    sa.setCorrect(sSet.equals(cSet) && !sSet.isEmpty());
+                }
+                submissionAnswerRepository.save(sa);
+            }
+        }
+
+        return saved;
+    }
+
+
 
     private ExamRoomResponse toResponse(ExamRoom room) {
         Exam exam = examRepository.findById(room.getExamId()).orElse(null);
