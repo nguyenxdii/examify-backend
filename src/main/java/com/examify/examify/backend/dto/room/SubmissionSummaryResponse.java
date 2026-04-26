@@ -14,4 +14,5 @@ public class SubmissionSummaryResponse {
     private String gradingStatus;
     private LocalDateTime submittedAt;
     private boolean hasPendingEssay;
+    private int attemptNumber;
 }

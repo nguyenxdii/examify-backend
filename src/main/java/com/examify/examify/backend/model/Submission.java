@@ -19,7 +19,7 @@ public class Submission {
     private int totalQuestions;
     private int correctCount;
     private String gradingStatus; // "auto_graded" | "pending_review" | "fully_graded"
-    private List<Object> questionSnapshot;
+    private List<Question> questionSnapshot;
     private LocalDateTime startedAt;
     private LocalDateTime submittedAt;
 }

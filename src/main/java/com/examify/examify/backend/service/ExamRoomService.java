@@ -9,12 +9,15 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.text.Normalizer;
 import java.util.*;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.util.stream.Collectors;
 import org.springframework.web.multipart.MultipartFile;
 import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.apache.poi.xwpf.usermodel.*;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
@@ -29,6 +32,7 @@ public class ExamRoomService {
     private final SubmissionRepository submissionRepository;
     private final SubmissionAnswerRepository submissionAnswerRepository;
     private final QuestionRepository questionRepository;
+    private final RoomAttemptRepository roomAttemptRepository;
     private final GeminiService geminiService;
 
     private String getCurrentTeacherId() {
@@ -52,8 +56,9 @@ public class ExamRoomService {
 
     private void autoUpdateStatus(ExamRoom room) {
         LocalDateTime now = LocalDateTime.now();
-        if ("closed".equals(room.getStatus())) return;
-        
+        if ("closed".equals(room.getStatus()))
+            return;
+
         if (room.getCloseAt() != null && now.isAfter(room.getCloseAt())) {
             room.setStatus("closed");
             examRoomRepository.save(room);
@@ -66,7 +71,7 @@ public class ExamRoomService {
     public ExamRoomResponse createRoom(ExamRoomRequest request) {
         Exam exam = examRepository.findById(request.getExamId())
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy đề thi"));
-        
+
         if (!exam.getTeacherId().equals(getCurrentTeacherId())) {
             throw new RuntimeException("Bạn không có quyền sử dụng đề thi này");
         }
@@ -115,11 +120,11 @@ public class ExamRoomService {
     public ExamRoomResponse getRoomDetail(String roomId) {
         ExamRoom room = examRoomRepository.findById(roomId)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy phòng thi"));
-        
+
         if (!room.getTeacherId().equals(getCurrentTeacherId())) {
             throw new RuntimeException("Bạn không có quyền truy cập phòng thi này");
         }
-        
+
         autoUpdateStatus(room);
         return toResponse(room);
     }
@@ -127,7 +132,7 @@ public class ExamRoomService {
     public ExamRoomResponse updateRoom(String roomId, ExamRoomRequest request) {
         ExamRoom room = examRoomRepository.findById(roomId)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy phòng thi"));
-        
+
         if (!room.getTeacherId().equals(getCurrentTeacherId())) {
             throw new RuntimeException("Bạn không có quyền chỉnh sửa phòng thi này");
         }
@@ -157,30 +162,10 @@ public class ExamRoomService {
         return toResponse(room);
     }
 
-    public void deleteRoom(String roomId) {
-        ExamRoom room = examRoomRepository.findById(roomId)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy phòng thi"));
-        
-        if (!room.getTeacherId().equals(getCurrentTeacherId())) {
-            throw new RuntimeException("Bạn không có quyền xóa phòng thi này");
-        }
-
-        if ("open".equals(room.getStatus())) {
-            throw new RuntimeException("Không thể xóa phòng đang mở");
-        }
-
-        if (submissionRepository.existsByRoomId(roomId)) {
-            throw new RuntimeException("Không thể xóa phòng đã có học sinh làm bài");
-        }
-
-        studentListRepository.deleteByRoomId(roomId);
-        examRoomRepository.deleteById(roomId);
-    }
-
     public void openRoom(String roomId) {
         ExamRoom room = examRoomRepository.findById(roomId)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy phòng thi"));
-        
+
         if (!room.getTeacherId().equals(getCurrentTeacherId())) {
             throw new RuntimeException("Quyền hạn không hợp lệ");
         }
@@ -197,7 +182,7 @@ public class ExamRoomService {
     public void closeRoom(String roomId) {
         ExamRoom room = examRoomRepository.findById(roomId)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy phòng thi"));
-        
+
         if (!room.getTeacherId().equals(getCurrentTeacherId())) {
             throw new RuntimeException("Quyền hạn không hợp lệ");
         }
@@ -207,191 +192,92 @@ public class ExamRoomService {
         examRoomRepository.save(room);
     }
 
-    public List<StudentListResponse> uploadStudentList(String roomId, MultipartFile file) {
-        if (file.isEmpty()) {
-            throw new RuntimeException("File rỗng");
-        }
-
+    public void deleteRoom(String roomId) {
         ExamRoom room = examRoomRepository.findById(roomId)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy phòng thi"));
-        
+
         if (!room.getTeacherId().equals(getCurrentTeacherId())) {
             throw new RuntimeException("Quyền hạn không hợp lệ");
         }
 
-        List<StudentList> students = new ArrayList<>();
-        String fileName = file.getOriginalFilename();
-        
-        try {
-            if (fileName != null && (fileName.endsWith(".xlsx") || fileName.endsWith(".xls"))) {
-                students = parseExcel(file, roomId);
-            } else if (fileName != null && fileName.endsWith(".docx")) {
-                students = parseDocx(file, roomId);
-            } else if (fileName != null && fileName.endsWith(".pdf")) {
-                students = parsePdf(file, roomId);
-            } else {
-                students = parseTextFile(file, roomId);
-            }
-        } catch (Exception e) {
-            throw new RuntimeException("Lỗi đọc file: " + e.getMessage());
+        // 1. Xóa chi tiết câu trả lời của tất cả bài nộp trong phòng
+        List<Submission> submissions = submissionRepository.findByRoomId(roomId);
+        for (Submission s : submissions) {
+            submissionAnswerRepository.deleteBySubmissionId(s.getId());
         }
 
-        if (students.isEmpty()) {
-            throw new RuntimeException("Không tìm thấy dữ liệu học sinh. Định dạng: MSSV, Họ tên");
-        }
-
+        // 2. Xóa các bảng liên quan theo roomId
+        submissionRepository.deleteByRoomId(roomId);
+        roomAttemptRepository.deleteByRoomId(roomId);
         studentListRepository.deleteByRoomId(roomId);
-        studentListRepository.saveAll(students);
-        
-        return getStudentList(roomId);
+
+        // 3. Xóa phòng thi
+        examRoomRepository.delete(room);
     }
 
-    public StudentListResponse updateStudentManual(String roomId, String id, StudentListRequest.StudentEntry entry) {
+    // ===== STUDENT LIST MANAGEMENT =====
+
+    public List<StudentListResponse> uploadStudentList(String roomId, MultipartFile file) {
         ExamRoom room = examRoomRepository.findById(roomId)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy phòng thi"));
-        
+
         if (!room.getTeacherId().equals(getCurrentTeacherId())) {
             throw new RuntimeException("Quyền hạn không hợp lệ");
         }
 
-        StudentList student = studentListRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy học sinh"));
-        
-        // Check if new SID exists in other entries (optional, but good)
-        if (!student.getStudentId().equals(entry.getStudentId()) && 
-            studentListRepository.existsByRoomIdAndStudentId(roomId, entry.getStudentId())) {
-            throw new RuntimeException("Học sinh với MSSV " + entry.getStudentId() + " đã tồn tại trong danh sách");
-        }
+        try {
+            List<StudentList> students;
+            String filename = file.getOriginalFilename() != null ? file.getOriginalFilename().toLowerCase() : "";
 
-        student.setStudentId(entry.getStudentId());
-        student.setStudentName(entry.getStudentName());
-        
-        StudentList saved = studentListRepository.save(student);
-        
-        StudentListResponse resp = new StudentListResponse();
-        resp.setId(saved.getId());
-        resp.setRoomId(saved.getRoomId());
-        resp.setStudentId(saved.getStudentId());
-        resp.setStudentName(saved.getStudentName());
-        resp.setHasSubmitted(!submissionRepository.findByRoomIdAndStudentId(roomId, saved.getStudentId()).isEmpty());
-        return resp;
-    }
-
-    public StudentListResponse addStudentManual(String roomId, StudentListRequest.StudentEntry entry) {
-        ExamRoom room = examRoomRepository.findById(roomId)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy phòng thi"));
-        
-        if (!room.getTeacherId().equals(getCurrentTeacherId())) {
-            throw new RuntimeException("Quyền hạn không hợp lệ");
-        }
-
-        if (studentListRepository.existsByRoomIdAndStudentId(roomId, entry.getStudentId())) {
-            throw new RuntimeException("Học sinh với MSSV " + entry.getStudentId() + " đã tồn tại trong danh sách");
-        }
-
-        StudentList student = new StudentList();
-        student.setRoomId(roomId);
-        student.setStudentId(entry.getStudentId());
-        student.setStudentName(entry.getStudentName());
-        
-        StudentList saved = studentListRepository.save(student);
-        
-        StudentListResponse resp = new StudentListResponse();
-        resp.setId(saved.getId());
-        resp.setRoomId(saved.getRoomId());
-        resp.setStudentId(saved.getStudentId());
-        resp.setStudentName(saved.getStudentName());
-        resp.setHasSubmitted(false);
-        return resp;
-    }
-
-    public void deleteStudent(String roomId, String id) {
-        ExamRoom room = examRoomRepository.findById(roomId)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy phòng thi"));
-        
-        if (!room.getTeacherId().equals(getCurrentTeacherId())) {
-            throw new RuntimeException("Quyền hạn không hợp lệ");
-        }
-
-        studentListRepository.deleteById(id);
-    }
-
-    private List<StudentList> parseTextFile(MultipartFile file, String roomId) throws Exception {
-        List<StudentList> students = new ArrayList<>();
-        try (BufferedReader br = new BufferedReader(new InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8))) {
-            String line;
-            while ((line = br.readLine()) != null) {
-                if (line.trim().isEmpty()) continue;
-                String[] parts = line.split("[,;\t]");
-                if (parts.length >= 2) {
-                    StudentList student = new StudentList();
-                    student.setRoomId(roomId);
-                    student.setStudentId(parts[0].trim());
-                    student.setStudentName(parts[1].trim());
-                    students.add(student);
-                }
+            if (filename.endsWith(".docx")) {
+                students = parseWord(file, roomId);
+            } else {
+                students = parseExcel(file, roomId);
             }
+
+            if (students.isEmpty()) {
+                throw new RuntimeException("Không tìm thấy dữ liệu học sinh hợp lệ trong file");
+            }
+
+            studentListRepository.deleteByRoomId(roomId);
+            studentListRepository.saveAll(students);
+            return getStudentList(roomId);
+        } catch (Exception e) {
+            throw new RuntimeException("Lỗi xử lý file: " + e.getMessage());
         }
-        return students;
     }
 
-    private List<StudentList> parseDocx(MultipartFile file, String roomId) throws Exception {
+    private List<StudentList> parseWord(MultipartFile file, String roomId) throws Exception {
         List<StudentList> students = new ArrayList<>();
         try (XWPFDocument doc = new XWPFDocument(file.getInputStream())) {
             for (XWPFTable table : doc.getTables()) {
+                int idCol = -1;
+                int nameCol = -1;
+
                 for (XWPFTableRow row : table.getRows()) {
                     List<XWPFTableCell> cells = row.getTableCells();
-                    if (cells.size() >= 2) {
-                        String sid = cells.get(0).getText().trim();
-                        String name = cells.get(1).getText().trim();
-                        
-                        // Nếu cột đầu tiên là STT (số thứ tự), hãy thử lấy cột 1 và 2
-                        if (sid.matches("\\d+") && cells.size() >= 3) {
-                            sid = cells.get(1).getText().trim();
-                            name = cells.get(2).getText().trim();
+                    if (idCol == -1 || nameCol == -1) {
+                        for (int i = 0; i < cells.size(); i++) {
+                            String text = cells.get(i).getText().toLowerCase();
+                            if (text.contains("mã số") || text.contains("mssv") || text.contains("id"))
+                                idCol = i;
+                            if (text.contains("họ tên") || text.contains("họ và tên") || text.contains("name"))
+                                nameCol = i;
                         }
-
-                        if (!sid.isEmpty() && !"MSSV".equalsIgnoreCase(sid) && !"Mã số".equalsIgnoreCase(sid) && !"STT".equalsIgnoreCase(sid)) {
-                            StudentList student = new StudentList();
-                            student.setRoomId(roomId);
-                            student.setStudentId(sid);
-                            student.setStudentName(name);
-                            students.add(student);
-                        }
-                    }
-                }
-            }
-        }
-        return students;
-    }
-
-    private List<StudentList> parsePdf(MultipartFile file, String roomId) throws Exception {
-        List<StudentList> students = new ArrayList<>();
-        try (PDDocument document = org.apache.pdfbox.Loader.loadPDF(file.getBytes())) {
-            PDFTextStripper stripper = new PDFTextStripper();
-            String text = stripper.getText(document);
-            String[] lines = text.split("\\r?\\n");
-            for (String line : lines) {
-                String[] parts = line.trim().split("\\s+");
-                if (parts.length >= 2) {
-                    // Cố gắng tìm MSSV (thường là số)
-                    String sid = "";
-                    String name = "";
-                    
-                    if (parts[0].matches("\\d{5,10}")) { // MSSV thường dài
-                        sid = parts[0];
-                        name = line.replace(sid, "").trim();
-                    } else if (parts.length >= 3 && parts[1].matches("\\d{5,10}")) { // Có STT ở đầu
-                        sid = parts[1];
-                        name = line.substring(line.indexOf(sid) + sid.length()).trim();
+                        if (idCol != -1 && nameCol != -1)
+                            continue;
                     }
 
-                    if (!sid.isEmpty()) {
-                        StudentList student = new StudentList();
-                        student.setRoomId(roomId);
-                        student.setStudentId(sid);
-                        student.setStudentName(name);
-                        students.add(student);
+                    if (idCol != -1 && nameCol != -1 && idCol < cells.size() && nameCol < cells.size()) {
+                        String sid = cells.get(idCol).getText().trim();
+                        String name = cells.get(nameCol).getText().trim();
+                        if (!sid.isEmpty() && !sid.equalsIgnoreCase("mssv") && !sid.equalsIgnoreCase("id")) {
+                            StudentList s = new StudentList();
+                            s.setRoomId(roomId);
+                            s.setStudentId(sid);
+                            s.setStudentName(name);
+                            students.add(s);
+                        }
                     }
                 }
             }
@@ -403,55 +289,46 @@ public class ExamRoomService {
         List<StudentList> students = new ArrayList<>();
         try (Workbook workbook = WorkbookFactory.create(file.getInputStream())) {
             Sheet sheet = workbook.getSheetAt(0);
-            
             int idCol = -1;
             int nameCol = -1;
-            
+
             for (Row row : sheet) {
-                // Attempt to identify headers
-                if (idCol == -1 && nameCol == -1) {
+                if (idCol == -1 || nameCol == -1) {
                     for (int i = 0; i < row.getLastCellNum(); i++) {
                         String cellVal = getCellValueAsString(row.getCell(i));
-                        if (cellVal == null) continue;
+                        if (cellVal == null)
+                            continue;
                         cellVal = cellVal.toLowerCase();
-                        if (cellVal.contains("mã số") || cellVal.contains("mssv") || cellVal.contains("student id")) {
+                        if (cellVal.contains("mã số") || cellVal.contains("mssv") || cellVal.contains("id"))
                             idCol = i;
-                        } else if (cellVal.contains("họ và tên") || cellVal.contains("họ tên") || cellVal.contains("name")) {
+                        if (cellVal.contains("họ và tên") || cellVal.contains("họ tên") || cellVal.contains("name"))
                             nameCol = i;
-                        }
                     }
-                    if (idCol != -1 && nameCol != -1) continue; // Skip header row
+                    if (idCol != -1 && nameCol != -1)
+                        continue;
                 }
-                
-                String col0 = getCellValueAsString(row.getCell(0));
-                String col1 = getCellValueAsString(row.getCell(1));
-                String col2 = getCellValueAsString(row.getCell(2));
-                
-                String sid = "";
-                String name = "";
-                
+
                 if (idCol != -1 && nameCol != -1) {
-                    sid = getCellValueAsString(row.getCell(idCol));
-                    name = getCellValueAsString(row.getCell(nameCol));
-                } else if (col0 != null && col1 != null) {
-                    if (col0.matches("\\d+") && col2 != null && !col2.isEmpty()) { 
-                        sid = col1;
-                        name = col2;
-                    } else {
-                        sid = col0;
-                        name = col1;
+                    String sid = getCellValueAsString(row.getCell(idCol));
+                    String name = getCellValueAsString(row.getCell(nameCol));
+                    if (sid != null && !sid.trim().isEmpty() && !sid.toLowerCase().contains("mssv")
+                            && !sid.toLowerCase().contains("mã số")) {
+                        StudentList student = new StudentList();
+                        student.setRoomId(roomId);
+                        student.setStudentId(sid.trim());
+                        student.setStudentName(name != null ? name.trim() : "");
+                        students.add(student);
                     }
-                }
-                
-                if (sid != null && !sid.isEmpty() && 
-                    !sid.toLowerCase().contains("mssv") && 
-                    !sid.toLowerCase().contains("mã số") &&
-                    !sid.toLowerCase().contains("stt")) {
-                    StudentList student = new StudentList();
-                    student.setRoomId(roomId);
-                    student.setStudentId(sid.trim());
-                    student.setStudentName(name != null ? name.trim() : "");
-                    students.add(student);
+                } else {
+                    String sid = getCellValueAsString(row.getCell(0));
+                    String name = getCellValueAsString(row.getCell(1));
+                    if (sid != null && sid.matches("\\d+") && name != null && name.length() > 2) {
+                        StudentList student = new StudentList();
+                        student.setRoomId(roomId);
+                        student.setStudentId(sid.trim());
+                        student.setStudentName(name.trim());
+                        students.add(student);
+                    }
                 }
             }
         }
@@ -459,48 +336,83 @@ public class ExamRoomService {
     }
 
     private String getCellValueAsString(Cell cell) {
-        if (cell == null) return null;
+        if (cell == null)
+            return null;
         switch (cell.getCellType()) {
-            case STRING: return cell.getStringCellValue();
+            case STRING:
+                return cell.getStringCellValue();
             case NUMERIC:
-                if (DateUtil.isCellDateFormatted(cell)) return cell.getDateCellValue().toString();
+                if (DateUtil.isCellDateFormatted(cell))
+                    return cell.getDateCellValue().toString();
                 return String.valueOf((long) cell.getNumericCellValue());
-            case BOOLEAN: return String.valueOf(cell.getBooleanCellValue());
-            case FORMULA: return cell.getCellFormula();
-            default: return "";
+            case BOOLEAN:
+                return String.valueOf(cell.getBooleanCellValue());
+            case FORMULA:
+                return cell.getCellFormula();
+            default:
+                return "";
         }
     }
 
     public List<StudentListResponse> getStudentList(String roomId) {
-        ExamRoom room = examRoomRepository.findById(roomId)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy phòng thi"));
-        
-        if (!room.getTeacherId().equals(getCurrentTeacherId())) {
-            throw new RuntimeException("Quyền hạn không hợp lệ");
-        }
-
         List<StudentList> list = studentListRepository.findByRoomId(roomId);
-        return list.stream().map(s -> {
-            StudentListResponse resp = new StudentListResponse();
-            resp.setId(s.getId());
-            resp.setRoomId(s.getRoomId());
-            resp.setStudentId(s.getStudentId());
-            resp.setStudentName(s.getStudentName());
-            resp.setHasSubmitted(!submissionRepository.findByRoomIdAndStudentId(roomId, s.getStudentId()).isEmpty());
-            return resp;
-        }).toList();
+        return list.stream().map(s -> toStudentResponse(s, roomId)).toList();
     }
 
+    public StudentListResponse addStudentManual(String roomId, StudentListRequest.StudentEntry entry) {
+        if (studentListRepository.existsByRoomIdAndStudentId(roomId, entry.getStudentId())) {
+            throw new RuntimeException("Mã số học sinh này đã tồn tại");
+        }
+        StudentList student = new StudentList();
+        student.setRoomId(roomId);
+        student.setStudentId(entry.getStudentId());
+        student.setStudentName(entry.getStudentName());
+        return toStudentResponse(studentListRepository.save(student), roomId);
+    }
+
+    public StudentListResponse updateStudentManual(String roomId, String id, StudentListRequest.StudentEntry entry) {
+        StudentList student = studentListRepository.findById(id).orElseThrow();
+        if (!student.getStudentId().equals(entry.getStudentId()) &&
+                studentListRepository.existsByRoomIdAndStudentId(roomId, entry.getStudentId())) {
+            throw new RuntimeException("Mã số học sinh mới đã tồn tại");
+        }
+        student.setStudentId(entry.getStudentId());
+        student.setStudentName(entry.getStudentName());
+        return toStudentResponse(studentListRepository.save(student), roomId);
+    }
+
+    public void deleteStudent(String roomId, String id) {
+        studentListRepository.deleteById(id);
+    }
+
+    private StudentListResponse toStudentResponse(StudentList s, String roomId) {
+        StudentListResponse resp = new StudentListResponse();
+        resp.setId(s.getId());
+        resp.setRoomId(s.getRoomId());
+        resp.setStudentId(s.getStudentId());
+        resp.setStudentName(s.getStudentName());
+        resp.setHasSubmitted(!submissionRepository.findByRoomIdAndStudentId(roomId, s.getStudentId()).isEmpty());
+        return resp;
+    }
+
+    // ===== SUBMISSIONS & GRADING =====
+
     public List<SubmissionSummaryResponse> getRoomSubmissions(String roomId) {
-        ExamRoom room = examRoomRepository.findById(roomId)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy phòng thi"));
-        
-        if (!room.getTeacherId().equals(getCurrentTeacherId())) {
-            throw new RuntimeException("Quyền hạn không hợp lệ");
+        List<Submission> submissions = submissionRepository.findByRoomId(roomId);
+
+        // Group by student to calculate attempt numbers
+        Map<String, List<Submission>> studentSubmissions = new HashMap<>();
+        for (Submission s : submissions) {
+            String key = (s.getStudentId() != null && !s.getStudentId().isEmpty()) ? s.getStudentId()
+                    : s.getStudentName();
+            studentSubmissions.computeIfAbsent(key, k -> new ArrayList<>()).add(s);
         }
 
-        List<Submission> submissions = submissionRepository.findByRoomId(roomId);
-        // Sắp xếp theo submittedAt desc
+        // Sort each student's submissions by date to assign attempt numbers
+        for (List<Submission> list : studentSubmissions.values()) {
+            list.sort(Comparator.comparing(Submission::getSubmittedAt));
+        }
+
         submissions.sort((a, b) -> b.getSubmittedAt().compareTo(a.getSubmittedAt()));
 
         return submissions.stream().map(s -> {
@@ -514,23 +426,24 @@ public class ExamRoomService {
             resp.setGradingStatus(s.getGradingStatus());
             resp.setSubmittedAt(s.getSubmittedAt());
             resp.setHasPendingEssay("pending_review".equals(s.getGradingStatus()));
+
+            // Calculate attempt number
+            String key = (s.getStudentId() != null && !s.getStudentId().isEmpty()) ? s.getStudentId()
+                    : s.getStudentName();
+            List<Submission> history = studentSubmissions.get(key);
+            if (history != null) {
+                resp.setAttemptNumber(history.indexOf(s) + 1);
+            }
+
             return resp;
         }).toList();
     }
 
     public SubmissionDetailResponse getSubmissionDetail(String roomId, String submissionId) {
-        ExamRoom room = examRoomRepository.findById(roomId)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy phòng thi"));
-        
-        if (!room.getTeacherId().equals(getCurrentTeacherId())) {
-            throw new RuntimeException("Quyền hạn không hợp lệ");
-        }
-
-        Submission s = submissionRepository.findById(submissionId)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy bài nộp"));
-
+        Submission s = submissionRepository.findById(submissionId).orElseThrow();
+        ExamRoom room = examRoomRepository.findById(roomId).orElseThrow();
         List<SubmissionAnswer> answers = submissionAnswerRepository.findBySubmissionId(submissionId);
-        
+
         SubmissionDetailResponse resp = new SubmissionDetailResponse();
         resp.setSubmissionId(s.getId());
         resp.setStudentId(s.getStudentId());
@@ -541,43 +454,30 @@ public class ExamRoomService {
         resp.setGradingStatus(s.getGradingStatus());
         resp.setStartedAt(s.getStartedAt());
         resp.setSubmittedAt(s.getSubmittedAt());
+        resp.setMaxAttempts(room.getMaxAttempts());
 
-        // Lấy snapshot questions
-        List<Object> snapshot = s.getQuestionSnapshot();
-        
-        List<SubmissionDetailResponse.AnswerDetailResponse> answerDetails = answers.stream().map(ans -> {
+        // Calculate attempt number for this specific submission
+        List<Submission> studentHistory = (s.getStudentId() != null && !s.getStudentId().isEmpty())
+                ? submissionRepository.findByRoomIdAndStudentId(roomId, s.getStudentId())
+                : submissionRepository.findByRoomIdAndStudentName(roomId, s.getStudentName());
+
+        studentHistory.sort(Comparator.comparing(Submission::getSubmittedAt));
+        for (int i = 0; i < studentHistory.size(); i++) {
+            if (studentHistory.get(i).getId().equals(s.getId())) {
+                resp.setAttemptNumber(i + 1);
+                break;
+            }
+        }
+
+        List<Question> snapshot = s.getQuestionSnapshot();
+        resp.setAnswers(answers.stream().map(ans -> {
             SubmissionDetailResponse.AnswerDetailResponse detail = new SubmissionDetailResponse.AnswerDetailResponse();
+            detail.setSubmissionAnswerId(ans.getId());
             detail.setQuestionId(ans.getQuestionId());
-            
-            // Tìm question trong snapshot
+
             Optional<Question> qOpt = snapshot.stream()
-                .filter(obj -> obj instanceof Map)
-                .map(obj -> (Map<String, Object>) obj)
-                .filter(map -> ans.getQuestionId().equals(map.get("id")))
-                .map(map -> {
-                    Question q = new Question();
-                    q.setId((String) map.get("id"));
-                    q.setContent((String) map.get("content"));
-                    q.setType((String) map.get("type"));
-                    q.setExplanation((String) map.get("explanation"));
-                    q.setSampleAnswer((String) map.get("sampleAnswer"));
-                    
-                    if (map.get("choices") != null) {
-                        List<Map<String, String>> choicesMap = (List<Map<String, String>>) map.get("choices");
-                        q.setChoices(choicesMap.stream().map(c -> {
-                            Question.Choice choice = new Question.Choice();
-                            choice.setKey(c.get("key"));
-                            choice.setContent(c.get("content"));
-                            return choice;
-                        }).toList());
-                    }
-                    
-                    if (map.get("correctAnswers") != null) {
-                        q.setCorrectAnswers((List<String>) map.get("correctAnswers"));
-                    }
-                    
-                    return q;
-                }).findFirst();
+                    .filter(q -> ans.getQuestionId().equals(q.getId()))
+                    .findFirst();
 
             if (qOpt.isPresent()) {
                 Question q = qOpt.get();
@@ -588,7 +488,6 @@ public class ExamRoomService {
                 detail.setExplanation(q.getExplanation());
                 detail.setSampleAnswer(q.getSampleAnswer());
             }
-
             detail.setSelectedAnswer(ans.getSelectedAnswer());
             detail.setEssayAnswer(ans.getEssayAnswer());
             detail.setCorrect(ans.isCorrect());
@@ -596,193 +495,176 @@ public class ExamRoomService {
             detail.setAiComment(ans.getAiComment());
             detail.setFinalScore(ans.getFinalScore());
             detail.setManuallyGraded(ans.isManuallyGraded());
-            
             return detail;
-        }).toList();
-
-        resp.setAnswers(answerDetails);
+        }).toList());
         return resp;
     }
 
     public SubmissionDetailResponse gradeEssay(String roomId, String submissionId, GradeEssayRequest req) {
-        ExamRoom room = examRoomRepository.findById(roomId)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy phòng thi"));
-        
-        if (!room.getTeacherId().equals(getCurrentTeacherId())) {
-            throw new RuntimeException("Quyền hạn không hợp lệ");
-        }
+        SubmissionAnswer answer = submissionAnswerRepository.findById(req.getSubmissionAnswerId()).orElseThrow();
+        Submission s = submissionRepository.findById(submissionId).orElseThrow();
+        float pointShare = s.getTotalQuestions() == 0 ? 0 : 10.0f / s.getTotalQuestions();
 
-        SubmissionAnswer answer = submissionAnswerRepository.findById(req.getSubmissionAnswerId())
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy câu trả lời"));
-
-        answer.setFinalScore(req.getFinalScore());
+        answer.setFinalScore(req.getFinalScore() > 0 ? pointShare : 0);
+        answer.setCorrect(req.getFinalScore() > 0);
         answer.setManuallyGraded(true);
         submissionAnswerRepository.save(answer);
 
+        List<SubmissionAnswer> allAnswers = submissionAnswerRepository.findBySubmissionId(submissionId);
+        long totalCorrect = allAnswers.stream().filter(SubmissionAnswer::isCorrect).count();
+        float totalScore = s.getTotalQuestions() == 0 ? 0 : ((float) totalCorrect / s.getTotalQuestions()) * 10;
+
+        s.setScore(totalScore);
+        s.setCorrectCount((int) totalCorrect);
+
         if (req.isConfirm()) {
-            Submission s = submissionRepository.findById(submissionId).orElseThrow();
-            List<SubmissionAnswer> allAnswers = submissionAnswerRepository.findBySubmissionId(submissionId);
-            
             boolean allEssayGraded = allAnswers.stream()
-                .filter(ans -> {
-                    // Check if it's essay by looking at snapshot? 
-                    // To be simple, if it has essayAnswer and is not auto-correct
-                    return ans.getEssayAnswer() != null; 
-                })
-                .allMatch(SubmissionAnswer::isManuallyGraded);
+                    .filter(ans -> {
+                        return s.getQuestionSnapshot().stream()
+                                .anyMatch(q -> ans.getQuestionId().equals(q.getId()) && "essay".equals(q.getType()));
+                    })
+                    .allMatch(SubmissionAnswer::isManuallyGraded);
 
             if (allEssayGraded) {
-                float totalScore = (float) allAnswers.stream()
-                    .mapToDouble(SubmissionAnswer::getFinalScore)
-                    .sum();
-                s.setScore(totalScore);
                 s.setGradingStatus("fully_graded");
-                submissionRepository.save(s);
             }
         }
-
+        submissionRepository.save(s);
         return getSubmissionDetail(roomId, submissionId);
     }
 
+    // ===== STUDENT VALIDATION & SUBMISSION =====
+
     public Map<String, Object> validateStudent(String roomId, String studentId, String studentName, String roomCode) {
-        ExamRoom room = examRoomRepository.findById(roomId)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy phòng thi"));
-
+        ExamRoom room = examRoomRepository.findById(roomId).orElseThrow();
         autoUpdateStatus(room);
-        if (!"open".equals(room.getStatus())) {
-            throw new RuntimeException("Phòng thi hiện không ở trạng thái mở");
-        }
+        if (!"open".equals(room.getStatus()))
+            throw new RuntimeException("Phòng thi hiện không mở");
 
-        // 1. Verify room code
-        if (!room.getRoomCode().equalsIgnoreCase(roomCode)) {
-            throw new RuntimeException("Mã phòng thi không chính xác");
-        }
-
-        // 2. Validate student list if required
         if (room.isRequireStudentList()) {
-            if (studentId == null || studentId.trim().isEmpty()) {
-                throw new RuntimeException("Phòng thi yêu cầu nhập Mã số học sinh");
-            }
-            if (!studentListRepository.existsByRoomIdAndStudentId(roomId, studentId)) {
-                throw new RuntimeException("Mã số học sinh " + studentId + " không có trong danh sách dự thi");
-            }
+            if (studentId == null || studentId.trim().isEmpty())
+                throw new RuntimeException("Yêu cầu nhập MSSV");
+            var entry = studentListRepository.findByRoomIdAndStudentId(roomId, studentId.trim())
+                    .orElseThrow(() -> new RuntimeException("MSSV không có trong danh sách dự thi"));
+
+            String regName = Normalizer.normalize(entry.getStudentName(), Normalizer.Form.NFC).trim().toLowerCase();
+            String provName = Normalizer.normalize(studentName, Normalizer.Form.NFC).trim().toLowerCase();
+            if (!regName.equals(provName))
+                throw new RuntimeException("Họ tên không khớp với MSSV đã đăng ký");
         }
 
-        // 3. Check attempts
-        if (room.getMaxAttempts() > 0 && studentId != null && !studentId.trim().isEmpty()) {
-            long attempts = submissionRepository.countByRoomIdAndStudentId(roomId, studentId);
-            if (attempts >= room.getMaxAttempts()) {
-                throw new RuntimeException("Bạn đã hết lượt làm bài (Tối đa " + room.getMaxAttempts() + " lần)");
-            }
+        if (roomCode != null && !roomCode.trim().isEmpty()) {
+            if (!room.getRoomCode().equalsIgnoreCase(roomCode))
+                throw new RuntimeException("Mã phòng thi sai");
+        } else {
+            return Map.of("valid", true, "needsCode", true);
         }
 
-        Map<String, Object> result = new HashMap<>();
-        result.put("valid", true);
-        result.put("roomName", room.getName());
-        return result;
+        if (room.getMaxAttempts() > 0 && studentId != null) {
+            if (submissionRepository.countByRoomIdAndStudentId(roomId, studentId) >= room.getMaxAttempts())
+                throw new RuntimeException("Bạn đã hết lượt làm bài");
+        }
+
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+        java.util.Optional<RoomAttempt> existing = (studentId != null)
+                ? roomAttemptRepository.findByRoomIdAndStudentId(roomId, studentId)
+                : roomAttemptRepository.findByRoomIdAndStudentName(roomId, studentName);
+
+        RoomAttempt attempt;
+        if (existing.isPresent()) {
+            attempt = existing.get();
+            // Check if student should start a new attempt
+            // If they are entering again, and the current attempt is expired OR they have
+            // already submitted
+            // We reset the timer.
+            // Note: Continuous timer means we only reset if they are starting a FRESH
+            // attempt.
+            // If they just refreshed during an active attempt, we KEEP the old endTime.
+
+            boolean isExpired = now.isAfter(attempt.getEndTime());
+            boolean alreadySubmitted = false;
+            if (studentId != null) {
+                alreadySubmitted = submissionRepository.existsByRoomIdAndStudentIdAndSubmittedAtAfter(
+                        roomId, studentId, attempt.getStartTime());
+            } else {
+                alreadySubmitted = submissionRepository.existsByRoomIdAndStudentNameAndSubmittedAtAfter(
+                        roomId, studentName, attempt.getStartTime());
+            }
+
+            if (isExpired || alreadySubmitted) {
+                attempt.setStartTime(now);
+                attempt.setEndTime(now.plusMinutes(room.getDurationMinutes()));
+                attempt = roomAttemptRepository.save(attempt);
+            }
+        } else {
+            attempt = new RoomAttempt();
+            attempt.setRoomId(roomId);
+            attempt.setStudentId(studentId);
+            attempt.setStudentName(studentName);
+            attempt.setStartTime(now);
+            attempt.setEndTime(now.plusMinutes(room.getDurationMinutes()));
+            attempt = roomAttemptRepository.save(attempt);
+        }
+
+        return Map.of("valid", true, "roomName", room.getName(), "startTime", attempt.getStartTime(), "endTime",
+                attempt.getEndTime());
     }
 
-    // ===== PUBLIC METHODS FOR STUDENTS =====
-
     public Map<String, Object> getRoomPublic(String roomId) {
-        ExamRoom room = examRoomRepository.findById(roomId)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy phòng thi"));
-        
+        ExamRoom room = examRoomRepository.findById(roomId).orElseThrow();
         autoUpdateStatus(room);
-        
-        if ("pending".equals(room.getStatus())) {
-            throw new RuntimeException("Phòng thi chưa đến giờ mở");
-        }
-        if ("closed".equals(room.getStatus())) {
+        if ("pending".equals(room.getStatus()))
+            throw new RuntimeException("Phòng thi chưa mở");
+        if ("closed".equals(room.getStatus()))
             throw new RuntimeException("Phòng thi đã đóng");
-        }
 
         Exam exam = examRepository.findById(room.getExamId()).orElseThrow();
-        List<Question> questions = questionRepository.findByExamIdOrderByOrderIndex(room.getExamId());
-        
-        Map<String, Object> resp = new HashMap<>();
-        resp.put("room", toResponse(room));
-        resp.put("questions", questions);
-        resp.put("shuffled", exam.isShuffled());
-        return resp;
+        return Map.of("room", toResponse(room), "questions",
+                questionRepository.findByExamIdOrderByOrderIndex(room.getExamId()), "shuffled", exam.isShuffled());
     }
 
     public Submission submitRoom(String roomId, SubmissionRequest request) {
-        ExamRoom room = examRoomRepository.findById(roomId)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy phòng thi"));
-        
+        ExamRoom room = examRoomRepository.findById(roomId).orElseThrow();
         autoUpdateStatus(room);
-        if (!"open".equals(room.getStatus())) {
-            throw new RuntimeException("Phòng thi không ở trạng thái mở");
-        }
-
-        // Validate student if required
-        if (room.isRequireStudentList()) {
-            if (request.getStudentId() == null || request.getStudentId().trim().isEmpty()) {
-                throw new RuntimeException("Phòng thi yêu cầu nhập Mã số học sinh (Student ID)");
-            }
-            if (!studentListRepository.existsByRoomIdAndStudentId(roomId, request.getStudentId())) {
-                throw new RuntimeException("Mã số học sinh không nằm trong danh sách được phép dự thi");
-            }
-            
-            // Check max attempts
-            if (room.getMaxAttempts() > 0) {
-                long attempts = submissionRepository.countByRoomIdAndStudentId(roomId, request.getStudentId());
-                if (attempts >= room.getMaxAttempts()) {
-                    throw new RuntimeException("Bạn đã hết lượt làm bài (Tối đa " + room.getMaxAttempts() + " lần)");
-                }
-            }
-        }
+        if (!"open".equals(room.getStatus()))
+            throw new RuntimeException("Phòng thi không mở");
 
         List<Question> questions = questionRepository.findByExamIdOrderByOrderIndex(room.getExamId());
-        int totalQuestions = questions.size();
-        float totalEarnedScore = 0;
+        float totalEarned = 0;
         int correctCount = 0;
         boolean hasEssay = false;
 
         for (Question q : questions) {
-            List<String> studentAns = request.getAnswers().get(q.getId());
+            List<String> ans = request.getAnswers().get(q.getId());
             if ("essay".equals(q.getType())) {
                 hasEssay = true;
-                String studentText = (studentAns != null && !studentAns.isEmpty()) ? studentAns.get(0) : "";
-                if (!studentText.trim().isEmpty()) {
-                    Map<String, Object> aiResult = geminiService.evaluateEssay(
-                        q.getContent(), q.getSampleAnswer(), q.getScoringCriteria(), studentText
-                    );
-                    float score = ((Double) aiResult.get("score")).floatValue();
-                    totalEarnedScore += score;
-                    if (score >= 10.0f) correctCount++;
+                String text = (ans != null && !ans.isEmpty()) ? ans.get(0) : "";
+                if (!text.trim().isEmpty()) {
+                    Map<String, Object> eval = geminiService.evaluateEssay(q.getContent(), q.getSampleAnswer(),
+                            q.getScoringCriteria(), text);
+                    totalEarned += ((Double) eval.get("score")).floatValue();
                 }
-            } else if (studentAns != null && q.getCorrectAnswers() != null) {
-                Set<String> studentSet = new HashSet<>(studentAns);
-                Set<String> correctSet = new HashSet<>(q.getCorrectAnswers());
-                if (studentSet.equals(correctSet) && !studentSet.isEmpty()) {
-                    totalEarnedScore += 10;
+            } else if (ans != null && q.getCorrectAnswers() != null) {
+                if (new HashSet<>(ans).equals(new HashSet<>(q.getCorrectAnswers()))) {
+                    totalEarned += 10;
                     correctCount++;
                 }
             }
         }
 
-        float finalScore = totalQuestions > 0 ? (totalEarnedScore / totalQuestions) : 0;
+        Submission s = new Submission();
+        s.setRoomId(roomId);
+        s.setExamId(room.getExamId());
+        s.setStudentName(request.getStudentName());
+        s.setStudentId(request.getStudentId());
+        s.setTotalQuestions(questions.size());
+        // Score and correctCount will be updated after processing individual answers
+        s.setGradingStatus(hasEssay ? "ai_graded_essay" : "auto_graded");
+        s.setStartedAt(LocalDateTime.now().minusMinutes(room.getDurationMinutes()));
+        s.setSubmittedAt(LocalDateTime.now());
+        s.setQuestionSnapshot(new ArrayList<>(questions));
+        Submission saved = submissionRepository.save(s);
 
-        Submission submission = new Submission();
-        submission.setRoomId(roomId);
-        submission.setExamId(room.getExamId());
-        submission.setStudentName(request.getStudentName());
-        submission.setStudentId(request.getStudentId());
-        submission.setScore(finalScore);
-        submission.setTotalQuestions(totalQuestions);
-        submission.setCorrectCount(correctCount);
-        submission.setGradingStatus(hasEssay ? "ai_graded_essay" : "auto_graded");
-        submission.setStartedAt(LocalDateTime.now().minusMinutes(room.getDurationMinutes()));
-        submission.setSubmittedAt(LocalDateTime.now());
-        
-        // Save snapshot
-        submission.setQuestionSnapshot(new ArrayList<>(questions));
-
-        Submission saved = submissionRepository.save(submission);
-
-        // Save answers
         for (Question q : questions) {
             List<String> ans = request.getAnswers().get(q.getId());
             if (ans != null) {
@@ -791,28 +673,37 @@ public class ExamRoomService {
                 sa.setQuestionId(q.getId());
                 sa.setSelectedAnswer(ans);
                 if ("essay".equals(q.getType())) {
-                    String text = (ans != null && !ans.isEmpty()) ? ans.get(0) : "";
+                    String text = ans.get(0);
                     sa.setEssayAnswer(text);
                     if (!text.trim().isEmpty()) {
-                        Map<String, Object> aiResult = geminiService.evaluateEssay(
-                            q.getContent(), q.getSampleAnswer(), q.getScoringCriteria(), text
-                        );
-                        sa.setAiScore(((Double) aiResult.get("score")).floatValue());
-                        sa.setAiComment((String) aiResult.get("feedback"));
+                        Map<String, Object> eval = geminiService.evaluateEssay(q.getContent(), q.getSampleAnswer(),
+                                q.getScoringCriteria(), text);
+                        float score = ((Double) eval.get("score")).floatValue();
+                        sa.setAiScore(score);
+                        sa.setFinalScore(score); // Default to AI score
+                        sa.setAiComment((String) eval.get("feedback"));
                     }
                 } else {
-                    Set<String> sSet = new HashSet<>(ans);
-                    Set<String> cSet = new HashSet<>(q.getCorrectAnswers() != null ? q.getCorrectAnswers() : List.of());
-                    sa.setCorrect(sSet.equals(cSet) && !sSet.isEmpty());
+                    boolean correct = new HashSet<>(ans)
+                            .equals(new HashSet<>(q.getCorrectAnswers() != null ? q.getCorrectAnswers() : List.of()));
+                    sa.setCorrect(correct);
+                    float pointShare = questions.isEmpty() ? 0 : 10.0f / questions.size();
+                    sa.setFinalScore(correct ? pointShare : 0);
                 }
                 submissionAnswerRepository.save(sa);
             }
         }
 
+        // Finalize submission score on scale 10
+        List<SubmissionAnswer> allSaved = submissionAnswerRepository.findBySubmissionId(saved.getId());
+        long finalCorrectCount = allSaved.stream().filter(SubmissionAnswer::isCorrect).count();
+        float finalScore = questions.isEmpty() ? 0 : ((float) finalCorrectCount / questions.size()) * 10;
+        saved.setScore(finalScore);
+        saved.setCorrectCount((int) finalCorrectCount);
+        submissionRepository.save(saved);
+
         return saved;
     }
-
-
 
     private ExamRoomResponse toResponse(ExamRoom room) {
         Exam exam = examRepository.findById(room.getExamId()).orElse(null);
@@ -834,7 +725,6 @@ public class ExamRoomService {
                 room.getStatus(),
                 submissionRepository.countByRoomId(room.getId()),
                 room.getCreatedAt(),
-                room.getUpdatedAt()
-        );
+                room.getUpdatedAt());
     }
 }
