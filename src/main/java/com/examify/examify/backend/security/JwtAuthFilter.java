@@ -29,6 +29,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                                     FilterChain filterChain)
             throws ServletException, IOException {
 
+        // Luôn cho phép các yêu cầu OPTIONS (CORS preflight) đi qua mà không kiểm tra JWT
+        if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
+            response.setStatus(HttpServletResponse.SC_OK);
+            return;
+        }
+
         // Lấy header Authorization
         String authHeader = request.getHeader("Authorization");
 

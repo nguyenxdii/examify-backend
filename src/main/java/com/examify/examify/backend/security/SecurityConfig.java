@@ -43,10 +43,20 @@ public class SecurityConfig {
     @Bean
     public org.springframework.web.cors.CorsConfigurationSource corsConfigurationSource() {
         org.springframework.web.cors.CorsConfiguration configuration = new org.springframework.web.cors.CorsConfiguration();
-        configuration.setAllowedOrigins(java.util.List.of("http://localhost:5173"));
-        configuration.setAllowedMethods(java.util.List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(java.util.List.of("Authorization", "Content-Type"));
+        // Cho phép localhost, các tên miền của render và vercel để đảm bảo không bị lỗi CORS khi deploy
+        configuration.setAllowedOriginPatterns(java.util.List.of(
+            "http://localhost:5173", 
+            "http://127.0.0.1:5173", 
+            "http://192.168.1.*:5173",
+            "https://*.onrender.com",
+            "https://*.vercel.app",
+            "https://*.ngrok-free.dev",
+            "https://*.ngrok-free.app"
+        ));
+        configuration.setAllowedMethods(java.util.List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
+        configuration.setAllowedHeaders(java.util.List.of("*"));
         configuration.setAllowCredentials(true);
+        
         org.springframework.web.cors.UrlBasedCorsConfigurationSource source = new org.springframework.web.cors.UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
         return source;

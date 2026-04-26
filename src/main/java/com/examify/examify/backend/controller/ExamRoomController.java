@@ -13,6 +13,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/rooms")
 @RequiredArgsConstructor
+@CrossOrigin("*")
 public class ExamRoomController {
 
     private final ExamRoomService examRoomService;
@@ -105,6 +106,19 @@ public class ExamRoomController {
     @GetMapping("/{roomId}/public")
     public ResponseEntity<Map<String, Object>> getRoomPublic(@PathVariable String roomId) {
         return ResponseEntity.ok(examRoomService.getRoomPublic(roomId));
+    }
+
+    @PostMapping("/{roomId}/validate")
+    public ResponseEntity<Map<String, Object>> validateStudent(
+            @PathVariable String roomId,
+            @RequestBody Map<String, String> request
+    ) {
+        return ResponseEntity.ok(examRoomService.validateStudent(
+                roomId,
+                request.get("studentId"),
+                request.get("studentName"),
+                request.get("roomCode")
+        ));
     }
 
     @PostMapping("/{roomId}/submit")

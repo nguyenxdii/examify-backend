@@ -644,6 +644,44 @@ public class ExamRoomService {
         return getSubmissionDetail(roomId, submissionId);
     }
 
+    public Map<String, Object> validateStudent(String roomId, String studentId, String studentName, String roomCode) {
+        ExamRoom room = examRoomRepository.findById(roomId)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy phòng thi"));
+
+        autoUpdateStatus(room);
+        if (!"open".equals(room.getStatus())) {
+            throw new RuntimeException("Phòng thi hiện không ở trạng thái mở");
+        }
+
+        // 1. Verify room code
+        if (!room.getRoomCode().equalsIgnoreCase(roomCode)) {
+            throw new RuntimeException("Mã phòng thi không chính xác");
+        }
+
+        // 2. Validate student list if required
+        if (room.isRequireStudentList()) {
+            if (studentId == null || studentId.trim().isEmpty()) {
+                throw new RuntimeException("Phòng thi yêu cầu nhập Mã số học sinh");
+            }
+            if (!studentListRepository.existsByRoomIdAndStudentId(roomId, studentId)) {
+                throw new RuntimeException("Mã số học sinh " + studentId + " không có trong danh sách dự thi");
+            }
+        }
+
+        // 3. Check attempts
+        if (room.getMaxAttempts() > 0 && studentId != null && !studentId.trim().isEmpty()) {
+            long attempts = submissionRepository.countByRoomIdAndStudentId(roomId, studentId);
+            if (attempts >= room.getMaxAttempts()) {
+                throw new RuntimeException("Bạn đã hết lượt làm bài (Tối đa " + room.getMaxAttempts() + " lần)");
+            }
+        }
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("valid", true);
+        result.put("roomName", room.getName());
+        return result;
+    }
+
     // ===== PUBLIC METHODS FOR STUDENTS =====
 
     public Map<String, Object> getRoomPublic(String roomId) {
