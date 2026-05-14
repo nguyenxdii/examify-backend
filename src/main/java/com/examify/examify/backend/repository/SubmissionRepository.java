@@ -14,10 +14,10 @@ public interface SubmissionRepository extends MongoRepository<Submission, String
     List<Submission> findByRoomIdAndStudentName(String roomId, String studentName);
 
     boolean existsByRoomIdAndStudentIdAndSubmittedAtAfter(String roomId, String studentId,
-            java.time.LocalDateTime submittedAt);
+            java.time.Instant submittedAt);
 
     boolean existsByRoomIdAndStudentNameAndSubmittedAtAfter(String roomId, String studentName,
-            java.time.LocalDateTime submittedAt);
+            java.time.Instant submittedAt);
 
     long countByRoomIdAndStudentId(String roomId, String studentId);
 

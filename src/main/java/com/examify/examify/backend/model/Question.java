@@ -3,7 +3,7 @@ package com.examify.examify.backend.model;
 import lombok.Data;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 
 @Data
@@ -25,8 +25,8 @@ public class Question {
     private String topic;
     private List<String> tags;
     private int orderIndex;
-    private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
+    private Instant createdAt;
+    private Instant updatedAt;
 
     @Data
     public static class Choice {

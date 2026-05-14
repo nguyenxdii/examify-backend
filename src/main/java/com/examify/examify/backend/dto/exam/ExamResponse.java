@@ -2,7 +2,7 @@ package com.examify.examify.backend.dto.exam;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Data
 @AllArgsConstructor
@@ -16,6 +16,6 @@ public class ExamResponse {
     private Integer passScore;
     private boolean isShuffled;
     private long questionCount;
-    private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
+    private Instant createdAt;
+    private Instant updatedAt;
 }

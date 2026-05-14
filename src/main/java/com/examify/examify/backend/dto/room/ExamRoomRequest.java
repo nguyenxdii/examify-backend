@@ -2,7 +2,7 @@ package com.examify.examify.backend.dto.room;
 
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Data
 public class ExamRoomRequest {
@@ -13,8 +13,8 @@ public class ExamRoomRequest {
     @NotBlank
     private String mode; // "exam" | "practice"
     private int durationMinutes = 0;
-    private LocalDateTime openAt;
-    private LocalDateTime closeAt;
+    private Instant openAt;
+    private Instant closeAt;
     private int maxAttempts = 0;
     private boolean showAnswersAfterSubmission;
     private boolean showScoreAfterSubmission;

@@ -6,7 +6,8 @@ import com.examify.examify.backend.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
-import java.time.LocalDateTime;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 import java.util.stream.Collectors;
@@ -57,8 +58,8 @@ public class ExamService {
         exam.setDuration(request.getDuration());
         exam.setPassScore(request.getPassScore());
         exam.setShuffled(request.getIsShuffled() != null ? request.getIsShuffled() : false);
-        exam.setCreatedAt(LocalDateTime.now());
-        exam.setUpdatedAt(LocalDateTime.now());
+        exam.setCreatedAt(Instant.now());
+        exam.setUpdatedAt(Instant.now());
         examRepository.save(exam);
         return toResponse(exam);
     }
@@ -94,7 +95,7 @@ public class ExamService {
         if (request.getIsShuffled() != null) {
             exam.setShuffled(request.getIsShuffled());
         }
-        exam.setUpdatedAt(LocalDateTime.now());
+        exam.setUpdatedAt(Instant.now());
         examRepository.save(exam);
         return toResponse(exam);
     }
@@ -111,8 +112,8 @@ public class ExamService {
         clone.setDuration(original.getDuration());
         clone.setPassScore(original.getPassScore());
         clone.setShuffled(original.isShuffled());
-        clone.setCreatedAt(LocalDateTime.now());
-        clone.setUpdatedAt(LocalDateTime.now());
+        clone.setCreatedAt(Instant.now());
+        clone.setUpdatedAt(Instant.now());
         
         Exam savedClone = examRepository.save(clone);
         
@@ -134,8 +135,8 @@ public class ExamService {
             qClone.setTopic(q.getTopic());
             qClone.setTags(q.getTags());
             qClone.setOrderIndex(q.getOrderIndex());
-            qClone.setCreatedAt(LocalDateTime.now());
-            qClone.setUpdatedAt(LocalDateTime.now());
+            qClone.setCreatedAt(Instant.now());
+            qClone.setUpdatedAt(Instant.now());
             questionRepository.save(qClone);
         }
         
@@ -219,7 +220,7 @@ public class ExamService {
         existing.setSubject(req.getSubject() != null ? req.getSubject() : exam.getSubject());
         existing.setTags(req.getTags());
         existing.setOrderIndex(req.getOrderIndex());
-        existing.setUpdatedAt(LocalDateTime.now());
+        existing.setUpdatedAt(Instant.now());
         Question saved = questionRepository.save(existing);
 
         if (req.isSaveToBank()) {
@@ -243,8 +244,8 @@ public class ExamService {
         bank.setSubject(q.getSubject());
         bank.setTopic(q.getTopic());
         bank.setTags(q.getTags());
-        bank.setCreatedAt(LocalDateTime.now());
-        bank.setUpdatedAt(LocalDateTime.now());
+        bank.setCreatedAt(Instant.now());
+        bank.setUpdatedAt(Instant.now());
         questionBankRepository.save(bank);
     }
 
@@ -262,8 +263,8 @@ public class ExamService {
         bank.setSubject(req.getSubject());
         bank.setTopic(req.getTopic());
         bank.setTags(req.getTags());
-        bank.setCreatedAt(LocalDateTime.now());
-        bank.setUpdatedAt(LocalDateTime.now());
+        bank.setCreatedAt(Instant.now());
+        bank.setUpdatedAt(Instant.now());
         return questionBankRepository.save(bank);
     }
 
@@ -316,7 +317,7 @@ public class ExamService {
         existing.setTopic(req.getTopic());
         existing.setSubject(req.getSubject());
         existing.setTags(req.getTags());
-        existing.setUpdatedAt(LocalDateTime.now());
+        existing.setUpdatedAt(Instant.now());
         
         return questionBankRepository.save(existing);
     }
@@ -362,8 +363,8 @@ public class ExamService {
         q.setTopic(req.getTopic());
         q.setTags(req.getTags());
         q.setOrderIndex(req.getOrderIndex());
-        q.setCreatedAt(LocalDateTime.now());
-        q.setUpdatedAt(LocalDateTime.now());
+        q.setCreatedAt(Instant.now());
+        q.setUpdatedAt(Instant.now());
         return q;
     }
 
@@ -374,7 +375,7 @@ public class ExamService {
         if ("ready".equals(exam.getStatus()) && count == 0) {
             exam.setStatus("draft");
         }
-        exam.setUpdatedAt(LocalDateTime.now());
+        exam.setUpdatedAt(Instant.now());
         examRepository.save(exam);
     }
 
@@ -490,8 +491,8 @@ public class ExamService {
         submission.setTotalQuestions(totalQuestions);
         submission.setCorrectCount(correctCount);
         submission.setGradingStatus(hasEssay ? "ai_graded_essay" : "auto_graded");
-        submission.setStartedAt(LocalDateTime.now().minusMinutes(exam.getDuration() != null ? exam.getDuration() : 10)); 
-        submission.setSubmittedAt(LocalDateTime.now());
+        submission.setStartedAt(Instant.now().minus(exam.getDuration() != null ? exam.getDuration() : 10, ChronoUnit.MINUTES)); 
+        submission.setSubmittedAt(Instant.now());
         
         // Lưu snapshot câu hỏi để xem lại sau này
         submission.setQuestionSnapshot(new ArrayList<>(questions));

@@ -11,7 +11,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Service
 @RequiredArgsConstructor
@@ -37,8 +37,8 @@ public class AuthService {
         user.setField(request.getField());
         user.setRole("teacher");   // mặc định đăng ký là teacher
         user.setLocked(false);
-        user.setCreatedAt(LocalDateTime.now());
-        user.setUpdatedAt(LocalDateTime.now());
+        user.setCreatedAt(Instant.now());
+        user.setUpdatedAt(Instant.now());
 
         userRepository.save(user);
 
@@ -79,7 +79,7 @@ public class AuthService {
         if (request.getGender() != null) user.setGender(request.getGender());
         if (request.getSchool() != null) user.setSchool(request.getSchool());
         if (request.getField() != null) user.setField(request.getField());
-        user.setUpdatedAt(LocalDateTime.now());
+        user.setUpdatedAt(Instant.now());
         userRepository.save(user);
         
         String token = jwtService.generateToken(user.getEmail());

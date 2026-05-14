@@ -2,7 +2,7 @@ package com.examify.examify.backend.dto;
 
 import lombok.Builder;
 import lombok.Data;
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Data
 @Builder
@@ -19,7 +19,7 @@ public class AdminUserDetailDTO {
     private long totalSubmissions; 
     
     private UserMetrics metrics;
-    private LocalDateTime createdAt;
+    private Instant createdAt;
 
     @Data
     @Builder

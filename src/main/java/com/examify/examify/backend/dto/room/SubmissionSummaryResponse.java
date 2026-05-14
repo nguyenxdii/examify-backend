@@ -1,7 +1,7 @@
 package com.examify.examify.backend.dto.room;
 
 import lombok.Data;
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Data
 public class SubmissionSummaryResponse {
@@ -12,7 +12,7 @@ public class SubmissionSummaryResponse {
     private int totalQuestions;
     private int correctCount;
     private String gradingStatus;
-    private LocalDateTime submittedAt;
+    private Instant submittedAt;
     private boolean hasPendingEssay;
     private int attemptNumber;
     private int totalAttempts;

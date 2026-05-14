@@ -12,7 +12,8 @@ import com.examify.examify.backend.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -32,8 +33,8 @@ public class AdminService {
         List<Exam> exams = examRepository.findAll();
         return exams.stream()
                 .sorted((a, b) -> {
-                    LocalDateTime ta = a.getUpdatedAt() != null ? a.getUpdatedAt() : a.getCreatedAt();
-                    LocalDateTime tb = b.getUpdatedAt() != null ? b.getUpdatedAt() : b.getCreatedAt();
+                    Instant ta = a.getUpdatedAt() != null ? a.getUpdatedAt() : a.getCreatedAt();
+                    Instant tb = b.getUpdatedAt() != null ? b.getUpdatedAt() : b.getCreatedAt();
                     if (ta == null || tb == null) return 0;
                     return tb.compareTo(ta);
                 })
@@ -171,13 +172,13 @@ public class AdminService {
         notification.setTitle("Đề thi đã bị xóa");
         notification.setMessage("Đề thi '" + examTitle + "' đã bị quản trị viên xóa. Lý do: " + reason);
         notification.setType("DANGER");
-        notification.setCreatedAt(LocalDateTime.now());
+        notification.setCreatedAt(Instant.now());
         notificationRepository.save(notification);
     }
 
     public AdminStatsDTO getSystemStats() {
-        LocalDateTime now = LocalDateTime.now();
-        LocalDateTime lastMonth = now.minusMonths(1);
+        Instant now = Instant.now();
+        Instant lastMonth = now.minus(30, ChronoUnit.DAYS);
         
         long totalUsers = userRepository.count();
         long usersLastMonth = userRepository.countByCreatedAtBefore(lastMonth);

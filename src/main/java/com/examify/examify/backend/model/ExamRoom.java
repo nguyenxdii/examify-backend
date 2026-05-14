@@ -4,7 +4,7 @@ import lombok.Data;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Data
 @Document(collection = "exam_rooms")
@@ -20,8 +20,8 @@ public class ExamRoom {
     private String name;
     private String mode; // "exam" | "practice"
     private int durationMinutes;
-    private LocalDateTime openAt;
-    private LocalDateTime closeAt;
+    private Instant openAt;
+    private Instant closeAt;
     private int maxAttempts;
     private boolean showAnswersAfterSubmission;
     private boolean showScoreAfterSubmission;
@@ -29,6 +29,6 @@ public class ExamRoom {
     private boolean scoresPublished;
     private boolean requireStudentList;
     private String status; // "pending" | "open" | "closed"
-    private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
+    private Instant createdAt;
+    private Instant updatedAt;
 }

@@ -3,7 +3,7 @@ package com.examify.examify.backend.dto;
 import com.examify.examify.backend.model.Question;
 import lombok.Builder;
 import lombok.Data;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 
 @Data
@@ -19,6 +19,6 @@ public class AdminExamDetailDTO {
     private int passScore;
     private String status;
     private List<Question> questions;
-    private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
+    private Instant createdAt;
+    private Instant updatedAt;
 }

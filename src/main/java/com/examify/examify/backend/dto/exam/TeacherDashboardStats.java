@@ -6,7 +6,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 
 @Data
@@ -31,6 +31,6 @@ public class TeacherDashboardStats {
         private String examTitle;
         private String roomName;
         private float score;
-        private LocalDateTime submittedAt;
+        private Instant submittedAt;
     }
 }

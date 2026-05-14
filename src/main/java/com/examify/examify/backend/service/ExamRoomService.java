@@ -8,7 +8,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.text.Normalizer;
 import java.util.*;
 import java.io.BufferedReader;
@@ -63,7 +64,7 @@ public class ExamRoomService {
     }
 
     private void autoUpdateStatus(ExamRoom room) {
-        LocalDateTime now = LocalDateTime.now();
+        Instant now = Instant.now();
         if ("closed".equals(room.getStatus()))
             return;
 
@@ -93,8 +94,8 @@ public class ExamRoomService {
         room.setDurationMinutes(request.getDurationMinutes());
         room.setOpenAt(request.getOpenAt());
         room.setCloseAt(request.getCloseAt());
-        room.setCreatedAt(LocalDateTime.now());
-        room.setUpdatedAt(LocalDateTime.now());
+        room.setCreatedAt(Instant.now());
+        room.setUpdatedAt(Instant.now());
 
         if ("practice".equals(request.getMode())) {
             room.setMaxAttempts(0);
@@ -112,7 +113,7 @@ public class ExamRoomService {
         room.setScoresPublished(false); // Default to false
         room.setStatus("pending");
 
-        LocalDateTime now = LocalDateTime.now();
+        Instant now = Instant.now();
         if (room.getOpenAt() != null && room.getOpenAt().isAfter(now)) {
             room.setStatus("pending");
         } else {
@@ -160,7 +161,7 @@ public class ExamRoomService {
         room.setDurationMinutes(request.getDurationMinutes());
         room.setOpenAt(request.getOpenAt());
         room.setCloseAt(request.getCloseAt());
-        room.setUpdatedAt(LocalDateTime.now());
+        room.setUpdatedAt(Instant.now());
 
         if ("practice".equals(request.getMode())) {
             room.setMaxAttempts(0);
@@ -193,7 +194,7 @@ public class ExamRoomService {
         }
 
         room.setStatus("open");
-        room.setUpdatedAt(LocalDateTime.now());
+        room.setUpdatedAt(Instant.now());
         examRoomRepository.save(room);
     }
 
@@ -206,7 +207,7 @@ public class ExamRoomService {
         }
 
         room.setStatus("closed");
-        room.setUpdatedAt(LocalDateTime.now());
+        room.setUpdatedAt(Instant.now());
         examRoomRepository.save(room);
     }
 
@@ -728,7 +729,7 @@ public class ExamRoomService {
                 throw new RuntimeException("Bạn đã hết lượt làm bài");
         }
 
-        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+        java.time.Instant now = java.time.Instant.now();
         java.util.Optional<RoomAttempt> existing = (sId != null)
                 ? roomAttemptRepository.findByRoomIdAndStudentId(roomId, sId)
                 : roomAttemptRepository.findByRoomIdAndStudentName(roomId, sName);
@@ -744,7 +745,7 @@ public class ExamRoomService {
 
             if (isExpired || currentAttemptFinished) {
                 attempt.setStartTime(now);
-                attempt.setEndTime(now.plusMinutes(room.getDurationMinutes()));
+                attempt.setEndTime(now.plus(room.getDurationMinutes(), ChronoUnit.MINUTES));
                 attempt.setAttemptNumber((int) submissionCount + 1);
                 attempt = roomAttemptRepository.save(attempt);
             }
@@ -754,7 +755,7 @@ public class ExamRoomService {
             attempt.setStudentId(sId);
             attempt.setStudentName(sName);
             attempt.setStartTime(now);
-            attempt.setEndTime(now.plusMinutes(room.getDurationMinutes()));
+            attempt.setEndTime(now.plus(room.getDurationMinutes(), ChronoUnit.MINUTES));
             attempt.setAttemptNumber(1);
             attempt = roomAttemptRepository.save(attempt);
         }
@@ -841,7 +842,7 @@ public class ExamRoomService {
         s.setStudentName(request.getStudentName() != null ? request.getStudentName().trim() : null);
         s.setStudentId(request.getStudentId() != null ? request.getStudentId().trim() : null);
         s.setGraded(false); // Default to not graded as per user request
-        s.setSubmittedAt(LocalDateTime.now());
+        s.setSubmittedAt(Instant.now());
         s.setTotalQuestions(questions.size());
         
         // --- SHUFFLE SNAPSHOT LOGIC ---

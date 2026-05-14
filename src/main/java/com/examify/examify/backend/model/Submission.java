@@ -3,7 +3,7 @@ package com.examify.examify.backend.model;
 import lombok.Data;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 
 @Data
@@ -21,7 +21,7 @@ public class Submission {
     private String gradingStatus; // "auto_graded" | "pending_review" | "fully_graded"
     private boolean isGraded;
     private List<Question> questionSnapshot;
-    private LocalDateTime startedAt;
-    private LocalDateTime submittedAt;
+    private Instant startedAt;
+    private Instant submittedAt;
     private boolean published = false;
 }

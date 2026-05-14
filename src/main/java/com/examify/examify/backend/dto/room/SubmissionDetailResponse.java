@@ -3,7 +3,7 @@ package com.examify.examify.backend.dto.room;
 import com.examify.examify.backend.model.Question;
 import lombok.Data;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 
 @Data
@@ -18,8 +18,8 @@ public class SubmissionDetailResponse {
     private int totalQuestions;
     private int correctCount;
     private String gradingStatus;
-    private LocalDateTime startedAt;
-    private LocalDateTime submittedAt;
+    private Instant startedAt;
+    private Instant submittedAt;
     private int attemptNumber;
     private int maxAttempts;
     private List<String> allAttemptIds;

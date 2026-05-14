@@ -11,5 +11,5 @@ public interface UserRepository extends MongoRepository<User, String> {
 
     boolean existsByEmail(String email);
 
-    long countByCreatedAtBefore(java.time.LocalDateTime date);
+    long countByCreatedAtBefore(java.time.Instant date);
 }

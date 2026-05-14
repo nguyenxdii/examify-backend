@@ -3,7 +3,7 @@ package com.examify.examify.backend.model;
 import lombok.Data;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Data
 @Document(collection = "exams")
@@ -18,6 +18,6 @@ public class Exam {
     private Integer duration; // in minutes
     private Integer passScore; // passing score
     private boolean isShuffled;
-    private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
+    private Instant createdAt;
+    private Instant updatedAt;
 }

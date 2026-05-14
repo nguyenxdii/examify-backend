@@ -4,7 +4,7 @@ import lombok.Data;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 import org.springframework.data.mongodb.core.index.Indexed;
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Data
 @Document(collection = "users")
@@ -27,6 +27,6 @@ public class User {
     private long totalApiRequests;
     private long storageUsed; // in bytes
     private long totalAiTokens;
-    private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
+    private Instant createdAt;
+    private Instant updatedAt;
 }
