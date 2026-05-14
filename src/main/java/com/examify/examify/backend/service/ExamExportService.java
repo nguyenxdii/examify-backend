@@ -41,21 +41,32 @@ public class ExamExportService {
 
     private final ExamRepository examRepository;
     private final QuestionRepository questionRepository;
-    private static final String FONT_PATH = "C:/Windows/Fonts/arial.ttf";
-
     private PdfFont getFont() throws IOException {
         try {
-            // Try loading from resources first for portability
+            // 1. Try loading from resources (most portable)
             var is = getClass().getResourceAsStream("/fonts/arial.ttf");
             if (is != null) {
                 byte[] fontData = is.readAllBytes();
                 return PdfFontFactory.createFont(fontData, PdfEncodings.IDENTITY_H);
             }
-            throw new RuntimeException("Font not in resources");
         } catch (Exception e) {
-            // Fallback to system font path
-            return PdfFontFactory.createFont(FONT_PATH, PdfEncodings.IDENTITY_H);
+            log.warn("Failed to load arial.ttf from resources, trying fallbacks...");
         }
+
+        try {
+            // 2. Try common Linux system font path (Render environment)
+            String linuxFont = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf";
+            java.io.File file = new java.io.File(linuxFont);
+            if (file.exists()) {
+                return PdfFontFactory.createFont(linuxFont, PdfEncodings.IDENTITY_H);
+            }
+        } catch (Exception e) {
+            log.warn("Failed to load Linux system font.");
+        }
+
+        // 3. Last resort: Standard Helvetica (Warning: No Vietnamese support)
+        log.error("No suitable font found. Using fallback Helvetica. Vietnamese text might not render correctly.");
+        return PdfFontFactory.createFont(com.itextpdf.io.font.constants.StandardFonts.HELVETICA, PdfEncodings.CP1252);
     }
 
     public byte[] exportExamToZip(String examId, ExportOptions options) throws IOException {

@@ -29,8 +29,8 @@ public class SecurityConfig {
                 .cors(Customizer.withDefaults()) // Sử dụng bean corsConfigurationSource()
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
+                        .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/exams/*/export").permitAll()
                         .requestMatchers("/api/auth/**").permitAll()
-                        .requestMatchers("/api/exams/*/export").permitAll()
                         .requestMatchers("/api/exams/**").permitAll()
                         .requestMatchers("/api/rooms/lookup", "/api/rooms/*/public", "/api/rooms/*/submit", "/api/rooms/*/validate").permitAll()
                         .requestMatchers("/api/ai/**").permitAll()
