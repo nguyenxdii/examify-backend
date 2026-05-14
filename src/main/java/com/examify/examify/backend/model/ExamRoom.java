@@ -23,7 +23,10 @@ public class ExamRoom {
     private LocalDateTime openAt;
     private LocalDateTime closeAt;
     private int maxAttempts;
-    private boolean showAnswerAfter;
+    private boolean showAnswersAfterSubmission;
+    private boolean showScoreAfterSubmission;
+    private boolean showSubmissionAfterSubmission;
+    private boolean scoresPublished;
     private boolean requireStudentList;
     private String status; // "pending" | "open" | "closed"
     private LocalDateTime createdAt;

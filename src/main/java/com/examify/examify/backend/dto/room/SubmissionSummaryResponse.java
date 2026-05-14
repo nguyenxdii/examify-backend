@@ -15,4 +15,10 @@ public class SubmissionSummaryResponse {
     private LocalDateTime submittedAt;
     private boolean hasPendingEssay;
     private int attemptNumber;
+    private int totalAttempts;
+    private int maxAttempts;
+    private float avgScore;
+    private boolean published;
+    @com.fasterxml.jackson.annotation.JsonProperty("isGraded")
+    private boolean isGraded;
 }

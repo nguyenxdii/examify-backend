@@ -54,7 +54,11 @@ public class AuthService {
 
         // Kiểm tra tài khoản bị khóa
         if (user.isLocked()) {
-            throw new RuntimeException("Tài khoản đã bị khóa");
+            String message = "Tài khoản đã bị khóa";
+            if (user.getLockReason() != null && !user.getLockReason().isEmpty()) {
+                message += ". Lý do: " + user.getLockReason();
+            }
+            throw new RuntimeException(message);
         }
 
         // Kiểm tra password

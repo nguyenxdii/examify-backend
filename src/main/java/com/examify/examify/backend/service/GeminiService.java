@@ -3,10 +3,13 @@ package com.examify.examify.backend.service;
 import com.examify.examify.backend.dto.ai.*;
 import com.examify.examify.backend.dto.exam.QuestionRequest;
 import com.examify.examify.backend.model.Question;
+import com.examify.examify.backend.model.User;
+import com.examify.examify.backend.repository.UserRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import org.apache.pdfbox.Loader;
@@ -18,8 +21,6 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.http.*;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
-import java.util.ArrayList;
-import java.util.Arrays;
 
 @Service
 @RequiredArgsConstructor
@@ -32,6 +33,18 @@ public class GeminiService {
 
     private final ObjectMapper objectMapper;
     private final RestTemplate restTemplate;
+    private final UserRepository userRepository;
+
+    private void incrementAiTokens(long tokens) {
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null) return;
+        Object principal = auth.getPrincipal();
+        if (principal instanceof User) {
+            User user = (User) principal;
+            user.setTotalAiTokens(user.getTotalAiTokens() + tokens);
+            userRepository.save(user);
+        }
+    }
 
     private static final String GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=";
 
@@ -68,6 +81,64 @@ public class GeminiService {
                     .reason("AI Failure: " + detailedError)
                     .build();
         }
+    }
+
+    public GenerateAiResponse parseExamDocument(MultipartFile file) {
+        try {
+            String content = extractTextFromFile(file);
+            String prompt = buildParseExamPrompt(content);
+            String raw = callGemini(prompt);
+            return parseGenerateResponse(raw);
+        } catch (Exception e) {
+            System.err.println("Error in parseExamDocument: " + e.getMessage());
+            return GenerateAiResponse.builder()
+                    .isValid(false)
+                    .reason("Lỗi khi xử lý file: " + e.getMessage())
+                    .build();
+        }
+    }
+
+    private String buildParseExamPrompt(String content) {
+        return """
+                Bạn là chuyên gia số hóa đề thi. 
+                Nhiệm vụ: Chuyển đổi nội dung văn bản thô từ một đề thi có sẵn thành cấu trúc JSON chuẩn.
+                
+                Nội dung đề thi:
+                ---
+                %s
+                ---
+                
+                YÊU CẦU:
+                1. Trích xuất CHÍNH XÁC nội dung câu hỏi và các lựa chọn (nếu có).
+                2. Xác định loại câu hỏi: multiple_choice (1 đáp án), multiple_answer (nhiều đáp án), hoặc essay (tự luận).
+                3. Cố gắng xác định ĐÁP ÁN ĐÚNG dựa trên nội dung hoặc các ký hiệu trong đề (vd: đáp án được gạch chân, in đậm, hoặc có dấu *). Nếu không thấy, hãy dùng kiến thức chuyên môn để xác định đáp án đúng nhất.
+                4. Tạo phần GIẢI THÍCH (explanation) cực kỳ chi tiết cho mỗi câu hỏi:
+                   - Giải thích theo từng bước (Step-by-step).
+                   - Tại mỗi bước, hãy giải thích TẠI SAO lại làm như vậy và CƠ SỞ kiến thức nào được áp dụng.
+                   - Nếu là bài toán, hãy trình bày các bước giải logic và công thức sử dụng.
+                   - Nếu là câu hỏi lý thuyết, hãy giải thích tại sao các phương án khác sai và tại sao phương án chọn lại đúng nhất.
+                5. Giữ nguyên thứ tự các câu hỏi như trong tài liệu gốc.
+                
+                ĐỊNH DẠNG JSON TRẢ VỀ (không markdown):
+                {
+                  "isValid": true,
+                  "suggestedTitle": "Tên đề thi trích xuất từ nội dung",
+                  "suggestedTopic": "Chủ đề chính",
+                  "questions": [
+                    {
+                      "content": "...",
+                      "type": "multiple_choice/multiple_answer/essay",
+                      "choices": [{"key":"A","content":"..."}, ...],
+                      "correctAnswers": ["A"],
+                      "explanation": "...",
+                      "difficulty": "easy/medium/hard",
+                      "topic": "..."
+                    }
+                  ]
+                }
+                
+                Lưu ý: Chỉ trả về JSON, không thêm bất kỳ văn bản nào khác.
+                """.formatted(content);
     }
 
     public AnalyzeResponse analyzeFile(MultipartFile file) {
@@ -130,7 +201,7 @@ public class GeminiService {
                             "parts", List.of(Map.of("text", prompt)))),
                     "generationConfig", Map.of(
                             "temperature", 0.7,
-                            "maxOutputTokens", 20000));
+                            "maxOutputTokens", 60000));
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
@@ -160,6 +231,10 @@ public class GeminiService {
 
                 String result = firstCandidate.path("content").path("parts").get(0)
                         .path("text").asText();
+
+                // Increment tokens (Approximate: 1 token ~= 4 chars)
+                long estimatedTokens = (prompt.length() + result.length()) / 4;
+                incrementAiTokens(estimatedTokens);
 
                 // Logging feedback for debugging
                 System.out.println("--- [GEMINI RESPONSE] ---");
@@ -263,11 +338,19 @@ public class GeminiService {
                 %s
                 ---
 
-                YÊU CẦU CẤU TRÚC ĐỀ THI:
-                - Trắc nghiệm 1 đáp án (multiple_choice): %d câu
-                - Trắc nghiệm nhiều đáp án (multiple_answer): %d câu
-                - Tự luận (essay): %d câu
-                - %s
+                YÊU CẦU ĐẶC BIỆT VỀ CHẤT LƯỢNG NỘI DUNG:
+                - Giải thích (explanation) và Lời giải mẫu (sampleAnswer): Phải cực kỳ chi tiết, trình bày khoa học, dễ hiểu.
+                - Sử dụng xuống dòng (ký tự \n) để phân tách các bước giải hoặc các ý chính. Đừng viết dồn cục.
+                - Với các môn tính toán, hãy trình bày các bước giải bài toán rõ ràng.
+                - Với các môn lý thuyết, hãy phân tích sâu lý do tại sao chọn đáp án đó và tại sao các đáp án khác sai.
+                - Đảm bảo tính thẩm mỹ và chuyên nghiệp trong cách trình bày văn bản.
+
+                YÊU CẦU CẤU TRÚC ĐỀ THI (BẮT BUỘC):
+                 - Trắc nghiệm một đáp án (multiple_choice): %d câu
+                 - Trắc nghiệm nhiều đáp án (multiple_answer): %d câu
+                 - Tự luận (essay): %d câu
+                 - %s
+                 => TỔNG CỘNG PHẢI ĐỦ CHÍNH XÁC %d CÂU HỎI. Đây là yêu cầu QUAN TRỌNG NHẤT. Nếu nội dung cung cấp không đủ, hãy tự mở rộng kiến thức liên quan để tạo cho đủ số lượng câu hỏi. Tuyệt đối không được thiếu dù chỉ 1 câu.
 
                 QUY TẮC XỬ LÝ:
                 1. Nếu nội dung là một chủ đề (như "Toán 12", "Hồ Chí Minh"): Hãy dùng kiến thức chuyên gia để soạn đề.
@@ -312,7 +395,9 @@ public class GeminiService {
                 }
 
                 QUY TẮC BẮT BUỘC:
-                - Trả về JSON thuần, tuyệt đối không có markdown, không có ```
+                - BẮT BUỘC sử dụng LaTeX cho TẤT CẢ biểu thức toán học, công thức, biến số (ví dụ: $y=x^3$, $x_i$, $\frac{1}{2}$). Sử dụng $...$ cho nội dòng và $$...$$ cho khối công thức.
+                - Sử dụng dấu nháy ```language cho các đoạn mã nguồn.
+                - Trả về JSON thuần, tuyệt đối không có markdown bao quanh JSON, không có ```json ở đầu.
                 - multiple_choice: correctAnswers có đúng 1 phần tử
                 - multiple_answer: correctAnswers có 2+ phần tử
                 - essay: choices=[], correctAnswers=[], phải có sampleAnswer và scoringCriteria
@@ -325,6 +410,7 @@ public class GeminiService {
                         request.getMultipleAnswer(),
                         request.getEssay(),
                         difficultyNote,
+                        request.getMultipleChoice() + request.getMultipleAnswer() + request.getEssay(),
                         lang);
     }
 
@@ -434,7 +520,7 @@ public class GeminiService {
                 request.getEssay(),
                 difficultyNote,
                 request.isDetailedExplanation()
-                        ? "Yêu cầu giải thích (explanation) cực kỳ chi tiết, trình bày từng bước giải quyết vấn đề (step-by-step)."
+                        ? "YÊU CẦU GIẢI THÍCH (explanation) CỰC KỲ CHI TIẾT: Hãy giải thích từng bước (step-by-step), làm rõ các khái niệm lý thuyết liên quan, công thức sử dụng (nếu có), và logic dẫn đến đáp án đúng. Đối với các phương án sai, hãy giải thích tại sao chúng không chính xác. Mục tiêu là để học sinh hiểu sâu vấn đề mà không cần hỏi thêm."
                         : "Giải thích ngắn gọn, súc tích.");
     }
 

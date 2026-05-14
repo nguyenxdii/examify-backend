@@ -19,7 +19,10 @@ public class ExamRoomResponse {
     private LocalDateTime openAt;
     private LocalDateTime closeAt;
     private int maxAttempts;
-    private boolean showAnswerAfter;
+    private boolean showAnswersAfterSubmission;
+    private boolean showScoreAfterSubmission;
+    private boolean showSubmissionAfterSubmission;
+    private boolean scoresPublished;
     private boolean requireStudentList;
     private String status;
     private long submissionCount;

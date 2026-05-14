@@ -11,4 +11,5 @@ public interface ExamRoomRepository extends MongoRepository<ExamRoom, String> {
     boolean existsByRoomCode(String roomCode);
     List<ExamRoom> findByExamId(String examId);
     boolean existsByExamIdAndStatus(String examId, String status);
+    void deleteByExamId(String examId);
 }

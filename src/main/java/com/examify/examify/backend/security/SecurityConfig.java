@@ -28,11 +28,12 @@ public class SecurityConfig {
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS)) // Không dùng session
                 .cors(Customizer.withDefaults()) // Sử dụng bean corsConfigurationSource()
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/**").permitAll()
-                        .requestMatchers("/api/exams/**").permitAll()
-                        .requestMatchers("/api/rooms/*/public", "/api/rooms/*/submit", "/api/rooms/*/validate").permitAll()
-                        .requestMatchers("/api/ai/**").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
+                        .requestMatchers("/api/auth/**").permitAll()
+                        .requestMatchers("/api/exams/*/export").permitAll()
+                        .requestMatchers("/api/exams/**").permitAll()
+                        .requestMatchers("/api/rooms/lookup", "/api/rooms/*/public", "/api/rooms/*/submit", "/api/rooms/*/validate").permitAll()
+                        .requestMatchers("/api/ai/**").permitAll()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);

@@ -61,6 +61,11 @@ public class ExamRoomController {
         return ResponseEntity.ok(examRoomService.uploadStudentList(roomId, file));
     }
 
+    @PostMapping("/{roomId}/students/preview")
+    public ResponseEntity<List<StudentListResponse>> previewStudentList(@PathVariable String roomId, @RequestParam("file") org.springframework.web.multipart.MultipartFile file) {
+        return ResponseEntity.ok(examRoomService.previewStudentList(roomId, file));
+    }
+
     @GetMapping("/{roomId}/students")
     public ResponseEntity<List<StudentListResponse>> getStudentList(@PathVariable String roomId) {
         return ResponseEntity.ok(examRoomService.getStudentList(roomId));
@@ -100,6 +105,23 @@ public class ExamRoomController {
     ) {
         return ResponseEntity.ok(examRoomService.gradeEssay(roomId, submissionId, request));
     }
+    @PatchMapping("/{roomId}/publish")
+    public ResponseEntity<Void> publishScores(@PathVariable String roomId, @RequestParam boolean published) {
+        examRoomService.publishScores(roomId, published);
+        return ResponseEntity.ok().build();
+    }
+
+    @PatchMapping("/{roomId}/submissions/{submissionId}/publish")
+    public ResponseEntity<Void> publishIndividualScore(@PathVariable String roomId, @PathVariable String submissionId, @RequestParam boolean published) {
+        examRoomService.publishIndividualScore(submissionId, published);
+        return ResponseEntity.ok().build();
+    }
+
+    @PatchMapping("/{roomId}/submissions/{submissionId}/toggle-graded")
+    public ResponseEntity<Void> toggleSubmissionGraded(@PathVariable String roomId, @PathVariable String submissionId, @RequestParam boolean graded) {
+        examRoomService.toggleSubmissionGraded(submissionId, graded);
+        return ResponseEntity.ok().build();
+    }
 
     // ===== PUBLIC ENDPOINTS FOR STUDENTS =====
 
@@ -122,10 +144,18 @@ public class ExamRoomController {
     }
 
     @PostMapping("/{roomId}/submit")
-    public ResponseEntity<com.examify.examify.backend.model.Submission> submitRoom(
+    public ResponseEntity<com.examify.examify.backend.dto.room.SubmissionDetailResponse> submitRoom(
             @PathVariable String roomId,
             @Valid @RequestBody com.examify.examify.backend.dto.exam.SubmissionRequest request
     ) {
         return ResponseEntity.ok(examRoomService.submitRoom(roomId, request));
+    }
+
+    @GetMapping("/lookup")
+    public ResponseEntity<List<com.examify.examify.backend.dto.room.SubmissionDetailResponse>> lookupResult(
+            @RequestParam String studentId,
+            @RequestParam String roomCode
+    ) {
+        return ResponseEntity.ok(examRoomService.lookupResult(studentId, roomCode));
     }
 }

@@ -36,6 +36,11 @@ public class AIController {
         return ResponseEntity.ok(geminiService.analyzeFile(file));
     }
 
+    @PostMapping("/parse-exam")
+    public ResponseEntity<GenerateAiResponse> parseExam(@RequestParam("file") MultipartFile file) {
+        return ResponseEntity.ok(geminiService.parseExamDocument(file));
+    }
+
     /**
      * Official endpoint to generate exam content using AI (includes Validation + Generation)
      */

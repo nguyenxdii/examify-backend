@@ -6,4 +6,5 @@ import java.util.List;
 
 public interface QuestionBankRepository extends MongoRepository<QuestionBank, String> {
     List<QuestionBank> findByTeacherId(String teacherId);
+    long countByTeacherId(String teacherId);
 }

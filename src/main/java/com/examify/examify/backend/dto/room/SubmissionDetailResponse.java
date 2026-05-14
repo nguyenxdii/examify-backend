@@ -9,8 +9,11 @@ import java.util.List;
 @Data
 public class SubmissionDetailResponse {
     private String submissionId;
+    private String roomId;
+    private String roomName;
     private String studentId;
     private String studentName;
+    private String examTitle;
     private float score;
     private int totalQuestions;
     private int correctCount;
@@ -19,6 +22,12 @@ public class SubmissionDetailResponse {
     private LocalDateTime submittedAt;
     private int attemptNumber;
     private int maxAttempts;
+    private List<String> allAttemptIds;
+    private boolean published;
+    @JsonProperty("isGraded")
+    private boolean isGraded;
+    private boolean showAnswers;
+    private boolean showSubmission;
     private List<AnswerDetailResponse> answers;
 
     @Data

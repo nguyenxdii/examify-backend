@@ -26,4 +26,5 @@ public interface SubmissionRepository extends MongoRepository<Submission, String
     long countByRoomId(String roomId);
 
     void deleteByRoomId(String roomId);
+    List<Submission> findByRoomIdIn(List<String> roomIds);
 }

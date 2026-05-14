@@ -22,7 +22,11 @@ public class User {
     private String role;        // "admin" | "teacher"
     private String school;
     private String field;
-    private boolean isLocked;
+    private boolean locked;
+    private String lockReason;
+    private long totalApiRequests;
+    private long storageUsed; // in bytes
+    private long totalAiTokens;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

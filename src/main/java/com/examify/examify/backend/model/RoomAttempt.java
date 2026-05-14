@@ -20,4 +20,5 @@ public class RoomAttempt {
     private String studentName;
     private LocalDateTime startTime;
     private LocalDateTime endTime;
+    private int attemptNumber;
 }

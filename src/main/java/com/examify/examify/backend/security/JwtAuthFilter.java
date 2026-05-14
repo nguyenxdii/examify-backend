@@ -56,6 +56,10 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         // Lấy email từ token, tìm user trong DB
         String email = jwtService.extractEmail(token);
         userRepository.findByEmail(email).ifPresent(user -> {
+            // Increment API Requests count
+            user.setTotalApiRequests(user.getTotalApiRequests() + 1);
+            userRepository.save(user);
+
             // Set authentication vào SecurityContext
             var auth = new UsernamePasswordAuthenticationToken(
                     user,

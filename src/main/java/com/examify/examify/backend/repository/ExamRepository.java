@@ -6,4 +6,7 @@ import java.util.List;
 
 public interface ExamRepository extends MongoRepository<Exam, String> {
     List<Exam> findByTeacherIdOrderByCreatedAtDesc(String teacherId);
+    long countByCreatedAtBefore(java.time.LocalDateTime date);
+    long countByTeacherId(String teacherId);
+    List<Exam> findTop5ByTeacherIdOrderByCreatedAtDesc(String teacherId);
 }

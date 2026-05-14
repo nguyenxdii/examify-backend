@@ -16,6 +16,8 @@ public class ExamRoomRequest {
     private LocalDateTime openAt;
     private LocalDateTime closeAt;
     private int maxAttempts = 0;
-    private boolean showAnswerAfter;
+    private boolean showAnswersAfterSubmission;
+    private boolean showScoreAfterSubmission;
+    private boolean showSubmissionAfterSubmission;
     private boolean requireStudentList;
 }
