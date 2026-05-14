@@ -15,12 +15,12 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.stream.Collectors;
+import java.util.Collections;
+import java.util.Random;
+import java.util.ArrayList;
 import org.springframework.web.multipart.MultipartFile;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
-import org.apache.poi.xwpf.usermodel.*;
-import org.apache.pdfbox.pdmodel.PDDocument;
-import org.apache.pdfbox.text.PDFTextStripper;
 
 @Service
 @RequiredArgsConstructor
@@ -274,53 +274,54 @@ public class ExamRoomService {
     private List<StudentList> parseFile(MultipartFile file, String roomId) {
         try {
             String filename = file.getOriginalFilename() != null ? file.getOriginalFilename().toLowerCase() : "";
-            if (filename.endsWith(".docx")) {
-                return parseWord(file, roomId);
+            if (filename.endsWith(".csv") || filename.endsWith(".txt")) {
+                return parseCsv(file, roomId);
             } else {
                 return parseExcel(file, roomId);
             }
         } catch (Exception e) {
+            if (e.getMessage() != null && e.getMessage().contains("unsupported file type")) {
+                throw new RuntimeException("Định dạng file không được hỗ trợ. Vui lòng sử dụng Excel (.xlsx, .xls) hoặc CSV.");
+            }
             throw new RuntimeException("Lỗi xử lý file: " + e.getMessage());
         }
     }
 
-    private List<StudentList> parseWord(MultipartFile file, String roomId) throws Exception {
+    private List<StudentList> parseCsv(MultipartFile file, String roomId) throws Exception {
         List<StudentList> students = new ArrayList<>();
-        try (XWPFDocument doc = new XWPFDocument(file.getInputStream())) {
-            for (XWPFTable table : doc.getTables()) {
-                int idCol = -1;
-                int nameCol = -1;
-
-                for (XWPFTableRow row : table.getRows()) {
-                    List<XWPFTableCell> cells = row.getTableCells();
-                    if (idCol == -1 || nameCol == -1) {
-                        for (int i = 0; i < cells.size(); i++) {
-                            String text = cells.get(i).getText().toLowerCase();
-                            if (text.contains("mã số") || text.contains("mssv") || text.contains("id"))
-                                idCol = i;
-                            if (text.contains("họ tên") || text.contains("họ và tên") || text.contains("name"))
-                                nameCol = i;
-                        }
-                        if (idCol != -1 && nameCol != -1)
-                            continue;
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8))) {
+            String line;
+            int idCol = -1;
+            int nameCol = -1;
+            
+            while ((line = reader.readLine()) != null) {
+                String[] parts = line.split(",|;|\\t");
+                if (idCol == -1 || nameCol == -1) {
+                    for (int i = 0; i < parts.length; i++) {
+                        String p = parts[i].trim().toLowerCase();
+                        if (p.contains("mã số") || p.contains("mssv") || p.contains("id")) idCol = i;
+                        if (p.contains("họ tên") || p.contains("họ và tên") || p.contains("name")) nameCol = i;
                     }
-
-                    if (idCol != -1 && nameCol != -1 && idCol < cells.size() && nameCol < cells.size()) {
-                        String sid = cells.get(idCol).getText().trim();
-                        String name = cells.get(nameCol).getText().trim();
-                        if (!sid.isEmpty() && !sid.equalsIgnoreCase("mssv") && !sid.equalsIgnoreCase("id")) {
-                            StudentList s = new StudentList();
-                            s.setRoomId(roomId);
-                            s.setStudentId(sid);
-                            s.setStudentName(name);
-                            students.add(s);
-                        }
+                    continue;
+                }
+                
+                if (idCol < parts.length && nameCol < parts.length) {
+                    String id = parts[idCol].trim();
+                    String name = parts[nameCol].trim();
+                    if (!id.isEmpty()) {
+                        StudentList s = new StudentList();
+                        s.setRoomId(roomId);
+                        s.setStudentId(id);
+                        s.setStudentName(name);
+                        students.add(s);
                     }
                 }
             }
         }
         return students;
     }
+
+
 
     private List<StudentList> parseExcel(MultipartFile file, String roomId) throws Exception {
         List<StudentList> students = new ArrayList<>();
@@ -607,12 +608,16 @@ public class ExamRoomService {
             // Set visibility flags in response
             resp.setShowSubmission(showSubmission);
             resp.setShowAnswers(showCorrectAnswers);
+            resp.setShowScoreAfterSubmission(room.isShowScoreAfterSubmission()); // Ensure frontend knows this flag
 
             if (!showScore) {
                 // If score is hidden, we hide points and correct counts
                 resp.setScore(0);
                 resp.setCorrectCount(0);
-                resp.setGradingStatus("pending_announcement");
+                // ONLY set pending_announcement if not showScoreAfterSubmission
+                if (!room.isShowScoreAfterSubmission()) {
+                    resp.setGradingStatus("pending_announcement");
+                }
             }
             
             if (!showSubmission) {
@@ -758,7 +763,7 @@ public class ExamRoomService {
                 attempt.getEndTime());
     }
 
-    public Map<String, Object> getRoomPublic(String roomId) {
+    public Map<String, Object> getRoomPublic(String roomId, String studentId, String studentName) {
         ExamRoom room = examRoomRepository.findById(roomId).orElseThrow();
         autoUpdateStatus(room);
         if ("pending".equals(room.getStatus()))
@@ -769,7 +774,38 @@ public class ExamRoomService {
         Exam exam = examRepository.findById(room.getExamId()).orElseThrow();
         List<Question> questions = questionRepository.findByExamIdOrderByOrderIndex(room.getExamId());
         
-        // Security: Remove correct answers and explanations from the questions sent to student
+        if (exam.isShuffled()) {
+            // Deterministic shuffle based on student and attempt
+            long seedValue = (long) roomId.hashCode();
+            int attemptNum = 1;
+
+            if (studentId != null && !studentId.trim().isEmpty()) {
+                seedValue += studentId.trim().hashCode();
+                var attempt = roomAttemptRepository.findByRoomIdAndStudentId(roomId, studentId.trim());
+                if (attempt.isPresent()) attemptNum = attempt.get().getAttemptNumber();
+            } else if (studentName != null && !studentName.trim().isEmpty()) {
+                seedValue += studentName.trim().hashCode();
+                var attempt = roomAttemptRepository.findByRoomIdAndStudentName(roomId, studentName.trim());
+                if (attempt.isPresent()) attemptNum = attempt.get().getAttemptNumber();
+            }
+            
+            seedValue += attemptNum;
+            Random rand = new Random(seedValue);
+            
+            // Create a copy to avoid modifying cache/database entities if they are shared
+            questions = new ArrayList<>(questions);
+            Collections.shuffle(questions, rand);
+            
+            for (Question q : questions) {
+                if (q.getChoices() != null && !q.getChoices().isEmpty()) {
+                    List<Question.Choice> shuffledChoices = new ArrayList<>(q.getChoices());
+                    Collections.shuffle(shuffledChoices, rand);
+                    q.setChoices(shuffledChoices);
+                }
+            }
+        }
+
+        // Security: Remove correct answers and explanations
         questions.forEach(q -> {
             q.setCorrectAnswers(null);
             q.setExplanation(null);
@@ -778,7 +814,8 @@ public class ExamRoomService {
         return Map.of(
             "room", toResponse(room), 
             "questions", questions, 
-            "shuffled", exam.isShuffled()
+            "shuffled", exam.isShuffled(),
+            "backendShuffled", true
         );
     }
 
@@ -927,6 +964,7 @@ public class ExamRoomService {
         s.setPublished(published);
         if (published) {
             s.setGraded(true);
+            s.setGradingStatus("fully_graded");
         }
         submissionRepository.save(s);
     }

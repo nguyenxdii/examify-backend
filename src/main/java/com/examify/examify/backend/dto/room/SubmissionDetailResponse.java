@@ -28,6 +28,7 @@ public class SubmissionDetailResponse {
     private boolean isGraded;
     private boolean showAnswers;
     private boolean showSubmission;
+    private boolean showScoreAfterSubmission;
     private List<AnswerDetailResponse> answers;
 
     @Data

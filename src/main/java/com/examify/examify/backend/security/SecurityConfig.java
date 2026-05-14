@@ -52,7 +52,9 @@ public class SecurityConfig {
             "https://*.onrender.com",
             "https://*.vercel.app",
             "https://*.ngrok-free.dev",
-            "https://*.ngrok-free.app"
+            "https://*.ngrok-free.app",
+            "https://examify.nguyenxdii.id.vn",
+            "https://*.id.vn"
         ));
         configuration.setAllowedMethods(java.util.List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
         configuration.setAllowedHeaders(java.util.List.of("*"));

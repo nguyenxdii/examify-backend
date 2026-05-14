@@ -126,8 +126,12 @@ public class ExamRoomController {
     // ===== PUBLIC ENDPOINTS FOR STUDENTS =====
 
     @GetMapping("/{roomId}/public")
-    public ResponseEntity<Map<String, Object>> getRoomPublic(@PathVariable String roomId) {
-        return ResponseEntity.ok(examRoomService.getRoomPublic(roomId));
+    public ResponseEntity<Map<String, Object>> getRoomPublic(
+            @PathVariable String roomId,
+            @RequestParam(required = false) String studentId,
+            @RequestParam(required = false) String studentName
+    ) {
+        return ResponseEntity.ok(examRoomService.getRoomPublic(roomId, studentId, studentName));
     }
 
     @PostMapping("/{roomId}/validate")
